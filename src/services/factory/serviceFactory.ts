@@ -3,6 +3,8 @@ import { RepositoryService } from '../repositoryService'
 import { CacheService } from '../cacheService'
 import type { IRepositoryService } from '../interfaces/iRepositoryService'
 import type { ICacheService } from '../interfaces/iCacheService'
+import { MultiTierCache } from '../cache/multiTierCache'
+import { CacheStrategyManager, CacheStrategy } from '../cache/cacheStrategy'
 
 export class ServiceFactory {
   private static instance: ServiceFactory
@@ -21,10 +23,11 @@ export class ServiceFactory {
 
   public createCacheService(): ICacheService {
     if (!this.cacheService) {
-      this.cacheService = new CacheService({
-        defaultTtl: 5 * 60 * 1000, // 5 minutes
+      this.cacheService = new MultiTierCache({
+        defaultTtl: 5 * 60 * 1000,
         maxSize: 100,
-        cleanupInterval: 60 * 1000 // 1 minute
+        cleanupInterval: 60 * 1000,
+        enableSessionStorage: true
       })
     }
     return this.cacheService
@@ -72,5 +75,18 @@ export class ServiceFactory {
     this.cacheService = null
     this.repositoryService = null
     this.apiClient = null
+  }
+
+  public createAdvancedCacheService(strategy?: CacheStrategy): ICacheService {
+    const recommendedStrategy = strategy || CacheStrategyManager.getRecommendedStrategy()
+
+    return CacheStrategyManager.createCache({
+      strategy: recommendedStrategy,
+      defaultTtl: 5 * 60 * 1000,
+      maxSize: 100,
+      cleanupInterval: 60 * 1000,
+      enableSessionStorage: true,
+      sessionStoragePrefix: 'gh_explorer_'
+    })
   }
 }
