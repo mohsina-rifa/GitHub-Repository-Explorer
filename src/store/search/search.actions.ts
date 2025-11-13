@@ -103,6 +103,10 @@ export const actions = {
       await performSearch(this, this.query, page)
     }
   },
+  
+  setQuery(this: SearchState, newQuery: string) {
+    this.query = newQuery
+  },
 
   clearSearch(this: SearchState) {
     this.query = ''
