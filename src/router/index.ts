@@ -17,6 +17,12 @@ const router = createRouter({
       path: '/repository/:owner/:repo',
       name: 'RepositoryDetail',
       component: () => import('../views/RepositoryDetailView.vue'),
+      props: true,
+    },
+    {
+      path: '/comparison',
+      name: 'comparison',
+      component: () => import('../views/ComparisonView.vue')
     }
   ]
 })
