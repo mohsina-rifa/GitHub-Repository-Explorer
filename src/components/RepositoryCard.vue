@@ -1,13 +1,24 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useComparisonStore } from '../store/comparison/comparison.store'
+import { storeToRefs } from 'pinia'
 import type { GitHubRepositoryData } from '../repositories/interfaces/iGitHubRepository'
 
 interface Props {
   repository: GitHubRepositoryData
 }
 
+interface Emits {
+  (e: 'toggle-selection', repository: GitHubRepositoryData): void
+}
+
 const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
+
 const router = useRouter()
+const comparisonStore = useComparisonStore()
+storeToRefs(comparisonStore)
 
 const getLanguageColor = (language: string): string => {
   const colors: Record<string, string> = {
@@ -31,10 +42,18 @@ const getLanguageColor = (language: string): string => {
   return colors[language] || '#6c757d'
 }
 
+const isSelected = computed(() => 
+  comparisonStore.isRepositorySelected(props.repository.id)
+)
+
+const canSelect = computed(() => 
+  isSelected.value || comparisonStore.canAddMore
+)
+
 const viewRepository = (): void => {
   if (props.repository.owner?.login) {
     router.push({
-      name: 'repository-detail',
+      name: 'RepositoryDetail',
       params: {
         owner: props.repository.owner.login,
         repo: props.repository.name
@@ -42,10 +61,35 @@ const viewRepository = (): void => {
     })
   }
 }
+
+const handleSelectionToggle = (event: Event): void => {
+  event.stopPropagation()
+  emit('toggle-selection', props.repository)
+}
 </script>
 
 <template>
-  <div class="card h-100 repository-card" @click="viewRepository">
+  <div class="card h-100 repository-card position-relative" @click="viewRepository">
+    <!-- Selection Checkbox -->
+    <div class="position-absolute top-0 end-0 p-2">
+      <div class="form-check">
+        <input 
+          class="form-check-input"
+          type="checkbox"
+          :checked="isSelected"
+          :disabled="!canSelect"
+          @click="handleSelectionToggle"
+          :id="`repo-select-${repository.id}`"
+        />
+        <label 
+          class="form-check-label visually-hidden" 
+          :for="`repo-select-${repository.id}`"
+        >
+          Select for comparison
+        </label>
+      </div>
+    </div>
+
     <div class="card-body">
       <div class="d-flex align-items-start mb-2">
         <img
@@ -93,26 +137,10 @@ const viewRepository = (): void => {
 <style scoped>
 .repository-card {
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .repository-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.language-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.card {
-  transition: transform 0.2s;
-}
-
-.card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
@@ -122,5 +150,41 @@ const viewRepository = (): void => {
   height: 12px;
   border-radius: 50%;
   display: inline-block;
+}
+
+.form-check-input {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 2px solid var(--bs-primary);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.form-check-input:checked {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+}
+
+.form-check-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.position-relative {
+  position: relative !important;
+}
+
+.position-absolute {
+  position: absolute !important;
+}
+
+/* Ensure checkbox is clickable over card */
+.form-check {
+  z-index: 10;
+}
+
+@media (max-width: 768px) {
+  .form-check-input {
+    width: 1.125em;
+    height: 1.125em;
+  }
 }
 </style>

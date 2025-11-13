@@ -2,15 +2,23 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSearchStore } from '../store/search/search.store'
+import { useComparisonStore } from '../store/comparison/comparison.store'
+import { useAppStore } from '../store/app/app.store'
 import { storeToRefs } from 'pinia'
+import type { GitHubRepositoryData } from '../repositories/interfaces/iGitHubRepository'
 import SearchInput from '../components/SearchInput.vue'
 import FilterDropdown from '../components/FilterDropdown.vue'
 import RepositoryCard from '../components/RepositoryCard.vue'
 import RepositoryListItem from '../components/RepositoryListItem.vue'
 import Pagination from '../components/Pagination.vue'
+
 const route = useRoute()
 const router = useRouter()
 const searchStore = useSearchStore()
+const comparisonStore = useComparisonStore()
+const appStore = useAppStore()
+
+const { repositoryCount } = storeToRefs(comparisonStore)
 
 const {
   query,
@@ -29,6 +37,34 @@ const {
 
 const searchQuery = ref('')
 const hasSearched = computed(() => searchStore.hasSearched)
+
+// Comparison methods
+const toggleRepositorySelection = (repository: GitHubRepositoryData): void => {
+  try {
+    if (comparisonStore.isRepositorySelected(repository.id)) {
+      comparisonStore.removeRepository(repository.id)
+      appStore.addNotification({
+        type: 'info',
+        message: 'Repository removed from comparison'
+      })
+    } else {
+      comparisonStore.addRepository(repository)
+      appStore.addNotification({
+        type: 'success',
+        message: 'Repository added to comparison'
+      })
+    }
+  } catch (error: any) {
+    appStore.addNotification({
+      type: 'error',
+      message: error.message
+    })
+  }
+}
+
+const viewComparison = (): void => {
+  router.push({ name: 'comparison' })
+}
 
 // Filter options
 const languageOptions = [
@@ -119,7 +155,9 @@ const initializeFromUrl = (): void => {
   }
 
   const validSortValues = ['stars', 'forks', 'updated']
-  const validSort = validSortValues.includes(urlSort) ? urlSort as 'stars' | 'forks' | 'updated' : undefined
+  const validSort = validSortValues.includes(urlSort)
+    ? (urlSort as 'stars' | 'forks' | 'updated')
+    : undefined
 
   if (urlLanguage || urlStars || validSort) {
     searchStore.setFilters({
@@ -146,6 +184,7 @@ watch(
 
 onMounted(() => {
   searchStore.initializeViewMode()
+  comparisonStore.loadFromStorage()
   initializeFromUrl()
 })
 </script>
@@ -191,6 +230,40 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparison Bar -->
+    <div v-if="repositoryCount > 0" class="comparison-bar bg-primary text-white py-3 mb-4">
+      <div class="container-fluid">
+        <div class="row align-items-center">
+          <div class="col-md-8">
+            <div class="d-flex align-items-center">
+              <i class="bi bi-collection me-2"></i>
+              <span class="fw-bold">{{ repositoryCount }} repositories selected for comparison</span>
+              <span class="badge bg-light text-primary ms-2">{{ repositoryCount }}/4</span>
+            </div>
+          </div>
+          <div class="col-md-4 text-md-end">
+            <div class="btn-group btn-group-sm">
+              <button 
+                class="btn btn-light"
+                :disabled="repositoryCount < 2"
+                @click="viewComparison"
+              >
+                <i class="bi bi-bar-chart me-1"></i>
+                Compare
+              </button>
+              <button 
+                class="btn btn-outline-light"
+                @click="comparisonStore.clearAll()"
+              >
+                <i class="bi bi-trash me-1"></i>
+                Clear
+              </button>
             </div>
           </div>
         </div>
@@ -291,7 +364,10 @@ onMounted(() => {
                 :key="repository.id"
                 class="col-xl-4 col-lg-6 col-md-6 col-12 mb-4"
               >
-                <RepositoryCard :repository="repository" />
+                <RepositoryCard 
+                  :repository="repository" 
+                  @toggle-selection="toggleRepositorySelection"
+                />
               </div>
             </div>
 
@@ -301,6 +377,7 @@ onMounted(() => {
                 :key="repository.id"
                 :repository="repository"
                 class="mb-3"
+                @toggle-selection="toggleRepositorySelection"
               />
             </div>
           </div>
@@ -330,6 +407,10 @@ onMounted(() => {
   border-bottom: 1px solid var(--bs-border-color);
 }
 
+.comparison-bar {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 .filters-section {
   border-radius: 0.375rem;
   border: 1px solid var(--bs-border-color);
@@ -347,6 +428,15 @@ onMounted(() => {
 @media (max-width: 768px) {
   .search-header {
     padding: 1rem 0 !important;
+  }
+
+  .comparison-bar .btn-group {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+
+  .comparison-bar .btn-group .btn {
+    flex: 1;
   }
 
   .filters-section .d-flex {
