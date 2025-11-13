@@ -11,12 +11,12 @@ interface Option {
 interface Props {
   label: string
   options: Option[]
-  modelValue: string | null
+  modelValue: string | null | undefined // Allow undefined
   showClearOption?: boolean
 }
 
 interface Emits {
-  (e: 'update:modelValue', value: string | null): void
+  (e: 'update:modelValue', value: string | null | undefined): void // Allow undefined
   (e: 'change', option: Option | null): void
 }
 
