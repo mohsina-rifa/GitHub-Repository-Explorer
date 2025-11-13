@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import type { GitHubRepositoryData } from '../repositories/interfaces/iGitHubRepository'
 
 interface Props {
   repository: GitHubRepositoryData
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+const router = useRouter()
 
 const getLanguageColor = (language: string): string => {
   const colors: Record<string, string> = {
@@ -28,10 +30,22 @@ const getLanguageColor = (language: string): string => {
   }
   return colors[language] || '#6c757d'
 }
+
+const viewRepository = (): void => {
+  if (props.repository.owner?.login) {
+    router.push({
+      name: 'repository-detail',
+      params: {
+        owner: props.repository.owner.login,
+        repo: props.repository.name
+      }
+    })
+  }
+}
 </script>
 
 <template>
-  <div class="card h-100">
+  <div class="card h-100 repository-card" @click="viewRepository">
     <div class="card-body">
       <div class="d-flex align-items-start mb-2">
         <img
@@ -43,9 +57,9 @@ const getLanguageColor = (language: string): string => {
         />
         <div class="flex-grow-1">
           <h5 class="card-title mb-1">
-            <a :href="repository.html_url" target="_blank" class="text-decoration-none">
+            <span class="text-primary text-decoration-none">
               {{ repository.name }}
-            </a>
+            </span>
           </h5>
           <small class="text-muted">{{ repository.owner?.login }}</small>
         </div>
@@ -77,6 +91,23 @@ const getLanguageColor = (language: string): string => {
 </template>
 
 <style scoped>
+.repository-card {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.repository-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.language-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
 .card {
   transition: transform 0.2s;
 }
