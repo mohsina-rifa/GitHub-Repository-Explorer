@@ -1,19 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useComparisonStore } from '../store/comparison/comparison.store'
 import type { Repository } from '../types/auth'
 
 interface Props {
   repository: Repository
-  isSelected?: boolean
 }
 
 const props = defineProps<Props>()
 const router = useRouter()
+const comparisonStore = useComparisonStore()
 
 const emit = defineEmits<{
-  'toggle-select': [id: number]
   'toggle-favorite': [id: number]
 }>()
+
+// Check if this repository is selected for comparison
+const isSelected = computed(() => comparisonStore.isSelected(props.repository.id))
+
+// Check if at limit
+const isAtLimit = computed(() => comparisonStore.isAtLimit)
 
 // Navigate to repository detail page
 const goToDetail = () => {
@@ -29,7 +36,15 @@ const goToDetail = () => {
 // Handle checkbox click (prevent navigation)
 const handleCheckboxClick = (event: Event) => {
   event.stopPropagation()
-  emit('toggle-select', props.repository.id)
+
+  // If trying to add but at limit, show visual feedback
+  if (!isSelected.value && isAtLimit.value) {
+    // The error is already set in the store
+    // You could add a toast notification here if you want
+    return
+  }
+
+  comparisonStore.toggleRepository(props.repository)
 }
 
 // Handle favorite click (prevent navigation)
@@ -77,8 +92,22 @@ const formatNumber = (num: number) => {
         class="form-check-input"
         type="checkbox"
         :checked="isSelected"
+        :disabled="!isSelected && isAtLimit"
         @change="handleCheckboxClick"
+        :title="
+          !isSelected && isAtLimit
+            ? 'Maximum 4 repositories can be selected'
+            : 'Select for comparison'
+        "
       />
+      <label
+        v-if="!isSelected && isAtLimit"
+        class="checkbox-label text-muted"
+        :for="`repo-${repository.id}`"
+        style="font-size: 0.75rem; cursor: not-allowed"
+      >
+        Max
+      </label>
     </div>
     <div class="repo-content">
       <div class="d-flex justify-content-between align-items-start">
@@ -138,7 +167,7 @@ const formatNumber = (num: number) => {
   gap: 1rem;
   transition: all 0.3s ease;
   border: 2px solid transparent;
-  cursor: pointer; /* Makes it clear the card is clickable */
+  cursor: pointer;
 }
 
 .repo-item:hover {
@@ -150,12 +179,31 @@ const formatNumber = (num: number) => {
 .repo-checkbox {
   flex-shrink: 0;
   padding-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .repo-checkbox .form-check-input {
   width: 1.25rem;
   height: 1.25rem;
   cursor: pointer;
+}
+
+.repo-checkbox .form-check-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.repo-checkbox .form-check-input:checked {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
+}
+
+.checkbox-label {
+  margin: 0;
+  padding: 0;
 }
 
 .repo-content {

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useSearchStore } from '../store/search/search.store'
+import { useComparisonStore } from '../store/comparison/comparison.store'
 import Repository from '../components/Repository.vue'
 import Pagination from '../components/Pagination.vue'
 
 const route = useRoute()
+const router = useRouter()
 const searchStore = useSearchStore()
+const comparisonStore = useComparisonStore()
 
 // Get query from route params and convert kebab-case back to normal
 const searchQuery = computed(() => {
@@ -25,8 +28,10 @@ const perPage = computed(() => searchStore.perPage)
 const sortBy = computed(() => searchStore.sortBy)
 const paginationInfo = computed(() => searchStore.paginationInfo)
 
-// Selected repositories for comparison (keep local for now, will be moved to comparison store later)
-const selectedRepos = computed(() => new Set<number>())
+// Comparison store state
+const selectedCount = computed(() => comparisonStore.selectedCount)
+const canCompare = computed(() => comparisonStore.canCompare)
+const comparisonError = computed(() => comparisonStore.error)
 
 // Perform search when component mounts
 onMounted(() => {
@@ -50,12 +55,6 @@ watch(
   }
 )
 
-// Toggle repository selection (will be moved to comparison store later)
-const toggleSelection = (id: number) => {
-  console.log('Toggle selection:', id)
-  // TODO: Implement with comparison store
-}
-
 // Toggle favorite
 const toggleFavorite = (id: number) => {
   console.log('Toggle favorite:', id)
@@ -75,7 +74,13 @@ const handleSortChange = (option: string) => {
   }
 }
 
-// Handle view mode change
+// Navigate to comparison page
+const goToComparison = () => {
+  if (!canCompare.value) {
+    return
+  }
+  router.push({ name: 'Comparison' })
+}
 
 // Format sort label for display
 const sortLabel = computed(() => {
@@ -87,6 +92,11 @@ const sortLabel = computed(() => {
   }
   return labels[sortBy.value] || 'Best match'
 })
+
+// Dismiss comparison error
+const dismissComparisonError = () => {
+  comparisonStore.setError(null)
+}
 </script>
 
 <template>
@@ -94,15 +104,31 @@ const sortLabel = computed(() => {
     <div class="row">
       <!-- Main Content -->
       <main class="col-12 main-content">
-        <!-- Error Message -->
+        <!-- Error Message (Search) -->
         <div v-if="error" class="alert alert-danger alert-dismissible fade show" role="alert">
           <i class="bi bi-exclamation-triangle-fill me-2"></i>
-          <strong>Error:</strong> {{ error }}
+          <strong>Search Error:</strong> {{ error }}
           <button
             type="button"
             class="btn-close"
             aria-label="Close"
             @click="searchStore.setError(null)"
+          ></button>
+        </div>
+
+        <!-- Error Message (Comparison) -->
+        <div
+          v-if="comparisonError"
+          class="alert alert-warning alert-dismissible fade show"
+          role="alert"
+        >
+          <i class="bi bi-exclamation-circle-fill me-2"></i>
+          <strong>Comparison:</strong> {{ comparisonError }}
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            @click="dismissComparisonError"
           ></button>
         </div>
 
@@ -184,8 +210,18 @@ const sortLabel = computed(() => {
               </div>
 
               <!-- Compare Button -->
-              <button class="btn btn-primary" :disabled="selectedRepos.size === 0">
-                <i class="bi bi-arrow-left-right"></i> Compare ({{ selectedRepos.size }})
+              <button
+                class="btn btn-primary compare-btn"
+                :disabled="!canCompare"
+                :title="
+                  !canCompare
+                    ? 'Select at least 2 repositories to compare'
+                    : 'Compare selected repositories'
+                "
+                @click="goToComparison"
+              >
+                <i class="bi bi-arrow-left-right"></i> Compare
+                <span class="badge bg-light text-dark ms-2">{{ selectedCount }}</span>
               </button>
             </div>
           </div>
@@ -206,8 +242,6 @@ const sortLabel = computed(() => {
             v-for="repo in repositories"
             :key="repo.id"
             :repository="repo"
-            :is-selected="selectedRepos.has(repo.id)"
-            @toggle-select="toggleSelection"
             @toggle-favorite="toggleFavorite"
           />
 
@@ -276,6 +310,27 @@ const sortLabel = computed(() => {
   gap: 1rem;
 }
 
+/* Compare button styling */
+.compare-btn {
+  position: relative;
+  font-weight: 500;
+}
+
+.compare-btn:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+.compare-btn .badge {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.compare-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Loading spinner */
 .spinner-border {
   width: 3rem;
@@ -319,13 +374,12 @@ const sortLabel = computed(() => {
   }
 
   .results-controls .dropdown,
-  .results-controls .btn-group,
   .results-controls .btn {
     width: 100%;
   }
 
-  .results-controls .btn-group .btn {
-    width: 50%;
+  .compare-btn {
+    justify-content: center;
   }
 }
 
