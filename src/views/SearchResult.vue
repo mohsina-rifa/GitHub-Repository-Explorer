@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useSearchStore } from '../store/search/search.store'
 import Repository from '../components/Repository.vue'
 import Pagination from '../components/Pagination.vue'
-import type { Repository as RepositoryType } from '../types/auth'
 
 const route = useRoute()
+const searchStore = useSearchStore()
 
 // Get query from route params and convert kebab-case back to normal
 const searchQuery = computed(() => {
@@ -13,164 +14,79 @@ const searchQuery = computed(() => {
   return query.replace(/-/g, ' ')
 })
 
-// Dummy data (6 repositories)
-const repositories = ref<RepositoryType[]>([
-  {
-    id: 1,
-    name: 'react',
-    full_name: 'facebook/react',
-    owner: {
-      login: 'facebook',
-      avatar_url: 'https://avatars.githubusercontent.com/u/69631?v=4'
-    },
-    description:
-      'The library for web and native user interfaces. React lets you build user interfaces out of individual pieces called components.',
-    language: 'JavaScript',
-    stargazers_count: 223456,
-    forks_count: 45678,
-    open_issues_count: 890,
-    updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['react', 'javascript', 'ui', 'frontend'],
-    html_url: 'https://github.com/facebook/react'
-  },
-  {
-    id: 2,
-    name: 'vue',
-    full_name: 'vuejs/vue',
-    owner: {
-      login: 'vuejs',
-      avatar_url: 'https://avatars.githubusercontent.com/u/6128107?v=4'
-    },
-    description:
-      '🖖 Vue.js is a progressive, incrementally-adoptable JavaScript framework for building UI on the web.',
-    language: 'TypeScript',
-    stargazers_count: 207000,
-    forks_count: 33700,
-    open_issues_count: 356,
-    updated_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['vue', 'typescript', 'framework', 'frontend'],
-    html_url: 'https://github.com/vuejs/vue'
-  },
-  {
-    id: 3,
-    name: 'angular',
-    full_name: 'angular/angular',
-    owner: {
-      login: 'angular',
-      avatar_url: 'https://avatars.githubusercontent.com/u/139426?v=4'
-    },
-    description: "The modern web developer's platform",
-    language: 'TypeScript',
-    stargazers_count: 95800,
-    forks_count: 25300,
-    open_issues_count: 1234,
-    updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['angular', 'typescript', 'framework'],
-    html_url: 'https://github.com/angular/angular'
-  },
-  {
-    id: 4,
-    name: 'svelte',
-    full_name: 'sveltejs/svelte',
-    owner: {
-      login: 'sveltejs',
-      avatar_url: 'https://avatars.githubusercontent.com/u/23617963?v=4'
-    },
-    description: 'Cybernetically enhanced web apps',
-    language: 'JavaScript',
-    stargazers_count: 76500,
-    forks_count: 4020,
-    open_issues_count: 567,
-    updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['svelte', 'compiler', 'framework'],
-    html_url: 'https://github.com/sveltejs/svelte'
-  },
-  {
-    id: 5,
-    name: 'next.js',
-    full_name: 'vercel/next.js',
-    owner: {
-      login: 'vercel',
-      avatar_url: 'https://avatars.githubusercontent.com/u/14985020?v=4'
-    },
-    description: 'The React Framework for the Web',
-    language: 'JavaScript',
-    stargazers_count: 120000,
-    forks_count: 25800,
-    open_issues_count: 2345,
-    updated_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['react', 'nextjs', 'ssr', 'framework'],
-    html_url: 'https://github.com/vercel/next.js'
-  },
-  {
-    id: 6,
-    name: 'nuxt',
-    full_name: 'nuxt/nuxt',
-    owner: {
-      login: 'nuxt',
-      avatar_url: 'https://avatars.githubusercontent.com/u/23360933?v=4'
-    },
-    description: 'The Intuitive Vue Framework',
-    language: 'TypeScript',
-    stargazers_count: 51000,
-    forks_count: 4680,
-    open_issues_count: 123,
-    updated_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-    license: { name: 'MIT License' },
-    topics: ['vue', 'nuxt', 'ssr', 'framework'],
-    html_url: 'https://github.com/nuxt/nuxt'
+// Store state as computed properties
+const repositories = computed(() => searchStore.repositories)
+const isLoading = computed(() => searchStore.isLoading)
+const error = computed(() => searchStore.error)
+const totalCount = computed(() => searchStore.totalCount)
+const currentPage = computed(() => searchStore.currentPage)
+const totalPages = computed(() => searchStore.totalPages)
+const perPage = computed(() => searchStore.perPage)
+const sortBy = computed(() => searchStore.sortBy)
+const paginationInfo = computed(() => searchStore.paginationInfo)
+
+// Selected repositories for comparison (keep local for now, will be moved to comparison store later)
+const selectedRepos = computed(() => new Set<number>())
+
+// Perform search when component mounts
+onMounted(() => {
+  // Load view mode from localStorage
+  searchStore.loadViewMode()
+
+  // Perform initial search
+  if (searchQuery.value) {
+    searchStore.performSearch(searchQuery.value)
   }
-])
+})
 
-// Selected repositories for comparison
-const selectedRepos = ref<Set<number>>(new Set())
+// Watch for route changes
+watch(
+  () => route.params.query,
+  newQuery => {
+    if (newQuery) {
+      const query = (newQuery as string).replace(/-/g, ' ')
+      searchStore.performSearch(query)
+    }
+  }
+)
 
-// Pagination
-const currentPage = ref(1)
-const itemsPerPage = 30
-const totalItems = ref(1234)
-const totalPages = computed(() => Math.ceil(totalItems.value / itemsPerPage))
-
-// Sort option
-const sortOption = ref('best-match')
-
-// View mode
-const viewMode = ref<'list' | 'grid'>('list')
-
-// Toggle repository selection
+// Toggle repository selection (will be moved to comparison store later)
 const toggleSelection = (id: number) => {
-  if (selectedRepos.value.has(id)) {
-    selectedRepos.value.delete(id)
-  } else {
-    selectedRepos.value.add(id)
-  }
+  console.log('Toggle selection:', id)
+  // TODO: Implement with comparison store
 }
 
 // Toggle favorite
 const toggleFavorite = (id: number) => {
   console.log('Toggle favorite:', id)
+  // TODO: Implement with favorites functionality
 }
 
 // Handle page change
 const handlePageChange = (page: number) => {
-  currentPage.value = page
+  searchStore.goToPage(page)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // Handle sort change
 const handleSortChange = (option: string) => {
-  sortOption.value = option
+  if (option === 'best-match' || option === 'stars' || option === 'forks' || option === 'updated') {
+    searchStore.setSortBy(option as 'best-match' | 'stars' | 'forks' | 'updated')
+  }
 }
 
 // Handle view mode change
-const setViewMode = (mode: 'list' | 'grid') => {
-  viewMode.value = mode
-}
+
+// Format sort label for display
+const sortLabel = computed(() => {
+  const labels: Record<string, string> = {
+    'best-match': 'Best match',
+    stars: 'Most stars',
+    forks: 'Most forks',
+    updated: 'Recently updated'
+  }
+  return labels[sortBy.value] || 'Best match'
+})
 </script>
 
 <template>
@@ -178,19 +94,37 @@ const setViewMode = (mode: 'list' | 'grid') => {
     <div class="row">
       <!-- Main Content -->
       <main class="col-12 main-content">
+        <!-- Error Message -->
+        <div v-if="error" class="alert alert-danger alert-dismissible fade show" role="alert">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <strong>Error:</strong> {{ error }}
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            @click="searchStore.setError(null)"
+          ></button>
+        </div>
+
+        <!-- Loading State (Initial) -->
+        <div v-if="isLoading && repositories.length === 0" class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-3 text-muted">Searching repositories...</p>
+        </div>
+
         <!-- Results Header -->
-        <div class="results-header">
+        <div v-if="!isLoading || repositories.length > 0" class="results-header">
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div class="results-info">
               <h4 class="mb-1">
-                <strong>{{ totalItems.toLocaleString() }}</strong> repositories found for
+                <strong>{{ totalCount.toLocaleString() }}</strong> repositories found for
                 <span class="text-primary">"{{ searchQuery }}"</span>
               </h4>
               <p class="text-muted mb-0">
-                Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{
-                  Math.min(currentPage * itemsPerPage, totalItems)
-                }}
-                of {{ totalItems.toLocaleString() }} results
+                Showing {{ paginationInfo.start }}-{{ paginationInfo.end }} of
+                {{ totalCount.toLocaleString() }} results
               </p>
             </div>
 
@@ -201,15 +135,15 @@ const setViewMode = (mode: 'list' | 'grid') => {
                   class="btn btn-outline-secondary dropdown-toggle"
                   type="button"
                   data-bs-toggle="dropdown"
+                  :disabled="isLoading"
                 >
-                  <i class="bi bi-sort-down"></i> Sort:
-                  {{ sortOption === 'best-match' ? 'Best match' : sortOption }}
+                  <i class="bi bi-sort-down"></i> Sort: {{ sortLabel }}
                 </button>
                 <ul class="dropdown-menu">
                   <li>
                     <a
                       class="dropdown-item"
-                      :class="{ active: sortOption === 'best-match' }"
+                      :class="{ active: sortBy === 'best-match' }"
                       href="#"
                       @click.prevent="handleSortChange('best-match')"
                     >
@@ -219,7 +153,7 @@ const setViewMode = (mode: 'list' | 'grid') => {
                   <li>
                     <a
                       class="dropdown-item"
-                      :class="{ active: sortOption === 'stars' }"
+                      :class="{ active: sortBy === 'stars' }"
                       href="#"
                       @click.prevent="handleSortChange('stars')"
                     >
@@ -229,7 +163,7 @@ const setViewMode = (mode: 'list' | 'grid') => {
                   <li>
                     <a
                       class="dropdown-item"
-                      :class="{ active: sortOption === 'forks' }"
+                      :class="{ active: sortBy === 'forks' }"
                       href="#"
                       @click.prevent="handleSortChange('forks')"
                     >
@@ -239,7 +173,7 @@ const setViewMode = (mode: 'list' | 'grid') => {
                   <li>
                     <a
                       class="dropdown-item"
-                      :class="{ active: sortOption === 'updated' }"
+                      :class="{ active: sortBy === 'updated' }"
                       href="#"
                       @click.prevent="handleSortChange('updated')"
                     >
@@ -247,28 +181,6 @@ const setViewMode = (mode: 'list' | 'grid') => {
                     </a>
                   </li>
                 </ul>
-              </div>
-
-              <!-- View Toggle -->
-              <div class="btn-group" role="group">
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  :class="{ active: viewMode === 'list' }"
-                  title="List view"
-                  @click="setViewMode('list')"
-                >
-                  <i class="bi bi-list-ul"></i>
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-outline-secondary"
-                  :class="{ active: viewMode === 'grid' }"
-                  title="Grid view"
-                  @click="setViewMode('grid')"
-                >
-                  <i class="bi bi-grid-3x3"></i>
-                </button>
               </div>
 
               <!-- Compare Button -->
@@ -279,8 +191,17 @@ const setViewMode = (mode: 'list' | 'grid') => {
           </div>
         </div>
 
+        <!-- Empty State -->
+        <div v-if="!isLoading && repositories.length === 0 && !error" class="text-center py-5">
+          <i class="bi bi-inbox" style="font-size: 4rem; color: #6c757d"></i>
+          <h4 class="mt-3">No repositories found</h4>
+          <p class="text-muted">
+            Try adjusting your search query or filters to find what you're looking for.
+          </p>
+        </div>
+
         <!-- Repository List -->
-        <div class="repository-list">
+        <div v-if="repositories.length > 0" class="repository-list">
           <Repository
             v-for="repo in repositories"
             :key="repo.id"
@@ -289,14 +210,23 @@ const setViewMode = (mode: 'list' | 'grid') => {
             @toggle-select="toggleSelection"
             @toggle-favorite="toggleFavorite"
           />
+
+          <!-- Loading Overlay for Pagination -->
+          <div v-if="isLoading" class="text-center py-3">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-2 text-muted">Loading more results...</span>
+          </div>
         </div>
 
         <!-- Pagination -->
         <Pagination
+          v-if="repositories.length > 0"
           :current-page="currentPage"
           :total-pages="totalPages"
-          :total-items="totalItems"
-          :items-per-page="itemsPerPage"
+          :total-items="totalCount"
+          :items-per-page="perPage"
           @page-change="handlePageChange"
         />
       </main>
@@ -308,6 +238,7 @@ const setViewMode = (mode: 'list' | 'grid') => {
 .main-content {
   padding: 1.5rem;
   background-color: #f8f9fa;
+  min-height: calc(100vh - 56px);
 }
 
 .results-header {
@@ -343,6 +274,23 @@ const setViewMode = (mode: 'list' | 'grid') => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* Loading spinner */
+.spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+.spinner-border-sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Alert styling */
+.alert {
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
 }
 
 @media (max-width: 991px) {
