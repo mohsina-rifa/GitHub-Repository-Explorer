@@ -1,15 +1,20 @@
-import type { GitHubRepositoryData } from '../../repositories/interfaces/iGitHubRepository'
+import type { Repository } from '../../types/auth'
 
 export interface ComparisonState {
-  selectedRepositories: GitHubRepositoryData[]
+  // Selected repositories for comparison
+  selectedRepositories: Repository[]
+
+  // Maximum number of repositories that can be compared
   maxRepositories: number
-  isComparing: boolean
-  comparisonId: string | null
+
+  // Loading and error states
+  isLoading: boolean
+  error: string | null
 }
 
 export const state: ComparisonState = {
   selectedRepositories: [],
   maxRepositories: 4,
-  isComparing: false,
-  comparisonId: null
+  isLoading: false,
+  error: null
 }

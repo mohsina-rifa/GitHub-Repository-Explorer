@@ -1,200 +1,332 @@
-import type { ComparisonState } from './comparison.state'
-import type { GitHubRepositoryData } from '../../repositories/interfaces/iGitHubRepository'
-import { EventBus } from '../../utils/observer/eventBus'
-
-const comparisonEventBus = EventBus.getInstance<{
-  action: 'added' | 'removed' | 'cleared'
-  repository?: GitHubRepositoryData
-  repositories: GitHubRepositoryData[]
-}>('repository-comparison')
+import type { Repository } from '../../types/auth'
+import { githubApi } from '../../api/github.api'
 
 export const actions = {
-  addRepository(this: ComparisonState, repository: GitHubRepositoryData) {
+  /**
+   * Add a repository to comparison
+   * @param repository - Repository object to add
+   * @returns boolean - true if added successfully, false otherwise
+   */
+  addRepository(this: any, repository: Repository): boolean {
+    // Check if repository already exists
+    if (this.selectedRepositories.some((r: Repository) => r.id === repository.id)) {
+      console.warn(`Repository with id ${repository.id} already selected`)
+      return false
+    }
+
+    // Check if at limit
     if (this.selectedRepositories.length >= this.maxRepositories) {
-      throw new Error(`Maximum ${this.maxRepositories} repositories allowed for comparison`)
+      this.error = `Cannot add more than ${this.maxRepositories} repositories`
+      return false
     }
 
-    const exists = this.selectedRepositories.some(repo => repo.id === repository.id)
-    if (exists) {
-      throw new Error('Repository already added to comparison')
-    }
-
+    // Add repository
     this.selectedRepositories.push(repository)
-
-    // Notify observers
-    comparisonEventBus.notify({
-      action: 'added',
-      repository,
-      repositories: [...this.selectedRepositories]
-    })
-
-    // Save to localStorage
-    actions.saveToStorage.call(this)
+    this.error = null
+    return true
   },
 
-  removeRepository(this: ComparisonState, repositoryId: number) {
-    const index = this.selectedRepositories.findIndex(repo => repo.id === repositoryId)
+  /**
+   * Remove a repository from comparison
+   * @param repoId - Repository ID to remove
+   * @returns boolean - true if removed, false if not found
+   */
+  removeRepository(this: any, repoId: number): boolean {
+    const index = this.selectedRepositories.findIndex((r: Repository) => r.id === repoId)
     if (index === -1) {
-      throw new Error('Repository not found in comparison')
+      console.warn(`Repository with id ${repoId} not found in selection`)
+      return false
     }
 
-    const repository = this.selectedRepositories[index]
     this.selectedRepositories.splice(index, 1)
-
-    // Notify observers
-    comparisonEventBus.notify({
-      action: 'removed',
-      repository,
-      repositories: [...this.selectedRepositories]
-    })
-
-    // Save to localStorage
-    actions.saveToStorage.call(this)
+    this.error = null
+    return true
   },
 
-  clearAll(this: ComparisonState) {
+  /**
+   * Toggle repository selection (add if not selected, remove if selected)
+   * @param repository - Repository object to toggle
+   * @returns boolean - true if added, false if removed
+   */
+  toggleRepository(this: any, repository: Repository): boolean {
+    const index = this.selectedRepositories.findIndex((r: Repository) => r.id === repository.id)
+
+    // If found -> remove and return false (indicates removed)
+    if (index !== -1) {
+      this.selectedRepositories.splice(index, 1)
+      this.error = null
+      return false
+    }
+
+    // If not found -> try to add and return the add result (true if added)
+    return this.addRepository(repository)
+  },
+
+  /**
+   * Clear all selected repositories
+   */
+  clearAll(this: any) {
     this.selectedRepositories = []
-    this.comparisonId = null
+    this.error = null
+  },
 
-    // Notify observers
-    comparisonEventBus.notify({
-      action: 'cleared',
-      repositories: []
+  /**
+   * Set error message
+   * @param error - Error message or null
+   */
+  setError(this: any, error: string | null) {
+    this.error = error
+  },
+
+  /**
+   * Set loading state
+   * @param loading - Loading boolean
+   */
+  setLoading(this: any, loading: boolean) {
+    this.isLoading = loading
+  },
+
+  /**
+   * Load repositories from IDs (for URL sharing)
+   * @param ids - Array of repository IDs
+   */
+  async loadFromIds(this: any, ids: number[]) {
+    this.setLoading(true)
+    this.setError(null)
+
+    const uniqueIds = Array.from(new Set(ids))
+
+    if (uniqueIds.length === 0) {
+      this.setLoading(false)
+      return
+    }
+
+    if (uniqueIds.length > this.maxRepositories) {
+      this.setError(`Cannot load more than ${this.maxRepositories} repositories`)
+      this.setLoading(false)
+      return
+    }
+
+    try {
+      // Fetch all repositories by numeric id using the GitHub API endpoint /repositories/:id
+      const results = await Promise.allSettled(uniqueIds.map(id => githubApi.getRepositoryById(id)))
+
+      const repos: Repository[] = results
+        .filter((r): r is PromiseFulfilledResult<Repository> => r.status === 'fulfilled')
+        .map(r => r.value)
+
+      if (repos.length === 0) {
+        this.setError('Failed to load repositories from provided IDs')
+        return
+      }
+
+      // Replace current selection with loaded repositories (respect ordering of provided IDs)
+      const repoMap = new Map<number, Repository>()
+      repos.forEach(r => repoMap.set(r.id, r))
+      this.selectedRepositories = uniqueIds
+        .map(id => repoMap.get(id))
+        .filter((r): r is Repository => !!r)
+
+      this.setError(null)
+    } catch (err: any) {
+      this.setError(err?.message || 'An error occurred while loading repositories')
+    } finally {
+      this.setLoading(false)
+    }
+  },
+
+  /**
+   * Export comparison data as JSON string
+   * @returns JSON string
+   */
+  exportAsJson(this: any): string {
+    const data = {
+      timestamp: new Date().toISOString(),
+      repositories: (this.selectedRepositories || []).map((repo: Repository) => ({
+        id: repo.id,
+        name: (repo as any).name ?? null,
+        full_name: (repo as any).full_name ?? null,
+        html_url: (repo as any).html_url ?? null,
+        description: (repo as any).description ?? null,
+        owner: (repo as any).owner?.login ?? null,
+        stargazers_count: (repo as any).stargazers_count ?? 0,
+        forks_count: (repo as any).forks_count ?? 0,
+        open_issues_count: (repo as any).open_issues_count ?? 0,
+        language: (repo as any).language ?? null,
+        license: (repo as any).license?.name ?? null,
+        topics: Array.isArray((repo as any).topics) ? (repo as any).topics : [],
+        created_at: (repo as any).created_at ?? null,
+        updated_at: (repo as any).updated_at ?? null
+      }))
+    }
+
+    return JSON.stringify(data, null, 2)
+  },
+
+  /**
+   * Download comparison as JSON file
+   */
+  downloadAsJson(this: any) {
+    // Guard for non-browser environments
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      this.setError('Download is only available in a browser environment')
+      return
+    }
+
+    const json = this.exportAsJson()
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = url
+    // sanitize filename
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    a.download = `comparison-${ts}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+
+    // cleanup
+    URL.revokeObjectURL(url)
+  },
+
+  /**
+   * Export as CSV string
+   * @returns CSV string
+   */
+  exportAsCsv(this: any): string {
+    const repos: Repository[] = this.selectedRepositories || []
+
+    const headers = [
+      'id',
+      'name',
+      'full_name',
+      'html_url',
+      'description',
+      'owner',
+      'stargazers_count',
+      'forks_count',
+      'open_issues_count',
+      'language',
+      'license',
+      'topics',
+      'created_at',
+      'updated_at'
+    ]
+
+    const escapeField = (value: any): string => {
+      if (value === null || value === undefined) return ''
+      const s = String(value)
+      // Escape double quotes by doubling them
+      const escaped = s.replace(/"/g, '""')
+      // Wrap in quotes if it contains comma, newline or double quotes
+      if (/[,"\n\r]/.test(s)) {
+        return `"${escaped}"`
+      }
+      return escaped
+    }
+
+    const rows = repos.map((repo: Repository) => {
+      const topics = Array.isArray((repo as any).topics) ? (repo as any).topics.join('|') : ''
+
+      const license = (repo as any).license?.name ?? ''
+      const owner = (repo as any).owner?.login ?? ''
+
+      const fields = [
+        repo.id,
+        (repo as any).name ?? '',
+        (repo as any).full_name ?? '',
+        (repo as any).html_url ?? '',
+        (repo as any).description ?? '',
+        owner,
+        (repo as any).stargazers_count ?? 0,
+        (repo as any).forks_count ?? 0,
+        (repo as any).open_issues_count ?? 0,
+        (repo as any).language ?? '',
+        license,
+        topics,
+        (repo as any).created_at ?? '',
+        (repo as any).updated_at ?? ''
+      ]
+
+      return fields.map(escapeField).join(',')
     })
 
-    // Clear localStorage
-    localStorage.removeItem('github_explorer_comparison')
+    // If no rows, still return header line
+    return headers.join(',') + (rows.length ? '\n' + rows.join('\n') : '\n')
   },
 
-  reorderRepositories(this: ComparisonState, newOrder: GitHubRepositoryData[]) {
-    if (newOrder.length !== this.selectedRepositories.length) {
-      throw new Error('Invalid reorder operation')
+  /**
+   * Download comparison as CSV file
+   */
+  downloadAsCsv(this: any) {
+    // Guard for non-browser environments
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      this.setError('Download is only available in a browser environment')
+      return
     }
 
-    this.selectedRepositories = [...newOrder]
-    actions.saveToStorage.call(this)
-  },
-
-  generateComparisonId(this: ComparisonState): string {
-    const ids = this.selectedRepositories
-      .map(repo => repo.id)
-      .sort()
-      .join('-')
-    this.comparisonId = `comparison-${Date.now()}-${ids}`
-    actions.saveToStorage.call(this)
-    return this.comparisonId
-  },
-
-  saveToStorage(this: ComparisonState) {
-    const data = {
-      repositories: this.selectedRepositories,
-      comparisonId: this.comparisonId,
-      timestamp: Date.now()
-    }
-    localStorage.setItem('github_explorer_comparison', JSON.stringify(data))
-  },
-
-  loadFromStorage(this: ComparisonState) {
-    try {
-      const saved = localStorage.getItem('github_explorer_comparison')
-      if (saved) {
-        const data = JSON.parse(saved)
-
-        // Check if data is not too old (24 hours)
-        if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
-          this.selectedRepositories = data.repositories || []
-          this.comparisonId = data.comparisonId
-        } else {
-          // Clear old data
-          localStorage.removeItem('github_explorer_comparison')
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load comparison from storage:', error)
-      localStorage.removeItem('github_explorer_comparison')
-    }
-  },
-
-  exportComparison(this: ComparisonState, format: 'json' | 'csv'): void {
-    if (this.selectedRepositories.length === 0) {
-      throw new Error('No repositories to export')
-    }
-
-    let content: string
-    let filename: string
-    let mimeType: string
-
-    if (format === 'json') {
-      content = JSON.stringify(
-        {
-          comparison: {
-            id: this.comparisonId,
-            timestamp: new Date().toISOString(),
-            repositories: this.selectedRepositories.map(repo => ({
-              name: repo.name,
-              owner: repo.owner?.login,
-              description: repo.description,
-              language: repo.language,
-              stars: repo.stargazers_count,
-              forks: repo.forks_count,
-              watchers: repo.watchers_count,
-              issues: repo.open_issues_count,
-              created: repo.created_at,
-              updated: repo.updated_at,
-              url: repo.html_url
-            }))
-          }
-        },
-        null,
-        2
-      )
-      filename = `repository-comparison-${Date.now()}.json`
-      mimeType = 'application/json'
-    } else {
-      // CSV format
-      const headers = [
-        'Name',
-        'Owner',
-        'Description',
-        'Language',
-        'Stars',
-        'Forks',
-        'Watchers',
-        'Issues',
-        'Created',
-        'URL'
-      ]
-      const rows = this.selectedRepositories.map(repo => [
-        repo.name,
-        repo.owner?.login || '',
-        (repo.description || '').replace(/"/g, '""'),
-        repo.language || '',
-        repo.stargazers_count || 0,
-        repo.forks_count || 0,
-        repo.watchers_count || 0,
-        repo.open_issues_count || 0,
-        repo.created_at || '',
-        repo.html_url || ''
-      ])
-
-      content = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-      ].join('\n')
-
-      filename = `repository-comparison-${Date.now()}.csv`
-      mimeType = 'text/csv'
-    }
-
-    // Download file
-    const blob = new Blob([content], { type: mimeType })
+    const csv = this.exportAsCsv()
+    const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+
+    const a = document.createElement('a')
+    a.href = url
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    a.download = `comparison-${ts}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+
+    // cleanup
     URL.revokeObjectURL(url)
+  },
+
+  /**
+   * Copy comparison URL to clipboard for sharing
+   * @returns Promise<boolean> - true if successful
+   */
+  async copyComparisonUrl(this: any): Promise<boolean> {
+    // Guard for non-browser environments
+    if (
+      typeof window === 'undefined' ||
+      typeof navigator === 'undefined' ||
+      typeof document === 'undefined'
+    ) {
+      this.setError('Clipboard is only available in a browser environment')
+      return false
+    }
+
+    const ids = (this.selectedRepositories || []).map((r: Repository) => r.id).join(',')
+    if (!ids) {
+      this.setError('No repositories selected to copy')
+      return false
+    }
+
+    const url = `${window.location.origin}/comparison?repos=${encodeURIComponent(ids)}`
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(url)
+      } else {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea')
+        ta.value = url
+        ta.setAttribute('readonly', '')
+        ta.style.position = 'absolute'
+        ta.style.left = '-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        if (!ok) throw new Error('Fallback clipboard copy failed')
+      }
+
+      this.setError(null)
+      return true
+    } catch (err: any) {
+      this.setError(err?.message || 'Failed to copy URL to clipboard')
+      return false
+    }
   }
 }
