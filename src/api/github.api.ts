@@ -61,7 +61,9 @@ class GitHubApiService {
 
         if (status === 403 && rateReset) {
           const resetDate = new Date(parseInt(rateReset, 10) * 1000)
-          throw new Error(`GitHub API rate limit exceeded. Resets at ${resetDate.toLocaleTimeString()}`)
+          throw new Error(
+            `GitHub API rate limit exceeded. Resets at ${resetDate.toLocaleTimeString()}`
+          )
         }
 
         if (status === 422) {
@@ -130,7 +132,7 @@ class GitHubApiService {
     archived?: boolean
     fork?: boolean | 'only'
   }): string {
-  let searchQuery = params.query
+    let searchQuery = params.query
 
     // Add language filters
     if (params.language && params.language.length > 0) {
@@ -222,6 +224,13 @@ class GitHubApiService {
   }
 
   /**
+   * Get repository by numeric ID
+   */
+  async getRepositoryById(id: number): Promise<Repository> {
+    return this.request<Repository>({ url: `/repositories/${id}` })
+  }
+
+  /**
    * Get repository README
    */
   async getRepositoryReadme(owner: string, repo: string): Promise<{ content: string }> {
@@ -237,12 +246,11 @@ class GitHubApiService {
   /**
    * Get repository contributors
    */
-  async getRepositoryContributors(
-    owner: string,
-    repo: string,
-    perPage = 30
-  ): Promise<any[]> {
-    return this.request<any[]>({ url: `/repos/${owner}/${repo}/contributors`, params: { per_page: perPage } })
+  async getRepositoryContributors(owner: string, repo: string, perPage = 30): Promise<any[]> {
+    return this.request<any[]>({
+      url: `/repos/${owner}/${repo}/contributors`,
+      params: { per_page: perPage }
+    })
   }
 
   /**
