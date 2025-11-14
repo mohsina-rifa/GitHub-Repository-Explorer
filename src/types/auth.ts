@@ -18,3 +18,24 @@ export interface Contributor {
   events_url?: string
   received_events_url?: string
 }
+
+export interface Repository {
+  id: number
+  name: string
+  full_name: string
+  owner: {
+    login: string
+    avatar_url: string
+  }
+  description: string | null
+  language: string | null
+  stargazers_count: number
+  forks_count: number
+  open_issues_count: number
+  updated_at: string
+  license: {
+    name: string
+  } | null
+  topics: string[]
+  html_url: string
+}
