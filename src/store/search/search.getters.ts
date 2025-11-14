@@ -1,43 +1,153 @@
 import type { SearchState } from './search.state'
-import type { GitHubRepositoryData } from '../../repositories/interfaces/iGitHubRepository'
+import type { Repository } from '../../types/auth'
 
 export const getters = {
-  hasResults: (state: SearchState): boolean => state.results.length > 0,
-  
-  totalPages: (state: SearchState): number => Math.ceil(state.totalCount / 30),
-  
-  isFirstPage: (state: SearchState): boolean => state.currentPage === 1,
-  
-  isLastPage: (state: SearchState): boolean => {
-    const totalPages = Math.ceil(state.totalCount / 30)
-    return state.currentPage >= totalPages
+  /**
+   * Get filtered repositories (client-side filtering)
+   */
+  filteredRepositories: (state: SearchState): Repository[] => {
+    let filtered = [...state.repositories]
+
+    // Apply language filter
+    if (state.filters.languages.length > 0) {
+      filtered = filtered.filter(
+        repo => repo.language && state.filters.languages.includes(repo.language)
+      )
+    }
+
+    // Apply star count filter
+    if (state.filters.minStars !== undefined) {
+      filtered = filtered.filter(repo => repo.stargazers_count >= state.filters.minStars!)
+    }
+    if (state.filters.maxStars !== undefined) {
+      filtered = filtered.filter(repo => repo.stargazers_count <= state.filters.maxStars!)
+    }
+
+    // Apply fork count filter
+    if (state.filters.minForks !== undefined) {
+      filtered = filtered.filter(repo => repo.forks_count >= state.filters.minForks!)
+    }
+    if (state.filters.maxForks !== undefined) {
+      filtered = filtered.filter(repo => repo.forks_count <= state.filters.maxForks!)
+    }
+
+    // Apply date filter
+    if (state.filters.dateFrom) {
+      const fromDate = new Date(state.filters.dateFrom)
+      filtered = filtered.filter(repo => new Date(repo.updated_at) >= fromDate)
+    }
+    if (state.filters.dateTo) {
+      const toDate = new Date(state.filters.dateTo)
+      filtered = filtered.filter(repo => new Date(repo.updated_at) <= toDate)
+    }
+
+    // Apply license filter
+    if (state.filters.licenses.length > 0) {
+      filtered = filtered.filter(
+        repo => repo.license && state.filters.licenses.includes(repo.license.name)
+      )
+    }
+
+    // Apply has issues filter
+    if (state.filters.hasIssues !== undefined) {
+      if (state.filters.hasIssues) {
+        filtered = filtered.filter(repo => repo.open_issues_count > 0)
+      }
+    }
+
+    // Apply has topics filter
+    if (state.filters.hasTopics !== undefined) {
+      if (state.filters.hasTopics) {
+        filtered = filtered.filter(repo => repo.topics && repo.topics.length > 0)
+      }
+    }
+
+    return filtered
   },
-  
+
+  /**
+   * Get paginated repositories
+   */
+  paginatedRepositories: (state: SearchState) => {
+    // Note: GitHub API handles pagination, so we just return repositories as-is
+    return state.repositories
+  },
+
+  /**
+   * Check if any filters are active
+   */
   hasActiveFilters: (state: SearchState): boolean => {
-    return Object.keys(state.filters).some(key => 
-      state.filters[key as keyof typeof state.filters]
+    return (
+      state.filters.languages.length > 0 ||
+      state.filters.licenses.length > 0 ||
+      state.filters.minStars !== undefined ||
+      state.filters.maxStars !== undefined ||
+      state.filters.minForks !== undefined ||
+      state.filters.maxForks !== undefined ||
+      state.filters.dateFrom !== undefined ||
+      state.filters.dateTo !== undefined ||
+      state.filters.hasIssues !== undefined ||
+      state.filters.hasTopics !== undefined
     )
   },
-  
-  getRepositoryById: (state: SearchState) => (id: number): GitHubRepositoryData | undefined => {
-    return state.results.find(repo => repo.id === id)
+
+  /**
+   * Get active filters count
+   */
+  activeFiltersCount: (state: SearchState): number => {
+    let count = 0
+    if (state.filters.languages.length > 0) count++
+    if (state.filters.licenses.length > 0) count++
+    if (state.filters.minStars !== undefined || state.filters.maxStars !== undefined) count++
+    if (state.filters.minForks !== undefined || state.filters.maxForks !== undefined) count++
+    if (state.filters.dateFrom || state.filters.dateTo) count++
+    if (state.filters.hasIssues !== undefined) count++
+    if (state.filters.hasTopics !== undefined) count++
+    return count
   },
-  
-  getFilteredResults: (state: SearchState) => (language?: string): GitHubRepositoryData[] => {
-    if (!language) return state.results
-    return state.results.filter(repo => 
-      repo.language?.toLowerCase() === language.toLowerCase()
-    )
+
+  /**
+   * Check if there are results
+   */
+  hasResults: (state: SearchState): boolean => {
+    return state.repositories.length > 0
   },
-  
-  searchSummary: (state: SearchState): string => {
-    if (!state.hasSearched) return 'Search GitHub repositories'
-    if (state.isLoading) return 'Searching...'
-    if (state.error) return 'Search failed'
-    if (state.totalCount === 0) return 'No repositories found'
-    
-    const start = (state.currentPage - 1) * 30 + 1
-    const end = Math.min(state.currentPage * 30, state.totalCount)
-    return `Showing ${start}-${end} of ${state.totalCount.toLocaleString()} repositories`
+
+  /**
+   * Check if search is empty
+   */
+  isEmpty: (state: SearchState): boolean => {
+    return !state.isLoading && state.repositories.length === 0 && state.query !== ''
+  },
+
+  /**
+   * Get pagination info
+   */
+  paginationInfo: (state: SearchState) => {
+    const start = (state.currentPage - 1) * state.perPage + 1
+    const end = Math.min(state.currentPage * state.perPage, state.totalCount)
+    return {
+      start,
+      end,
+      total: state.totalCount,
+      currentPage: state.currentPage,
+      totalPages: state.totalPages
+    }
+  },
+
+  /**
+   * Check if rate limit is low
+   */
+  isRateLimitLow: (state: SearchState): boolean => {
+    if (!state.rateLimit) return false
+    return state.rateLimit.remaining < 10
+  },
+
+  /**
+   * Get rate limit reset time
+   */
+  rateLimitResetTime: (state: SearchState): Date | null => {
+    if (!state.rateLimit) return null
+    return new Date(state.rateLimit.reset * 1000)
   }
 }
