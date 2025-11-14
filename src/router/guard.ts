@@ -10,11 +10,11 @@ export class RouteValidator {
   private static readonly GITHUB_USERNAME_PATTERN = /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i
   private static readonly GITHUB_REPO_PATTERN = /^[a-zA-Z0-9._-]+$/
 
-  static validateRepositoryRoute(
+  static validateRepositoryRoute = (
     to: RouteLocationNormalized,
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
-  ): void {
+  ): void => {
     const { owner, repo } = to.params
 
     try {
@@ -28,13 +28,13 @@ export class RouteValidator {
         throw new Error('Invalid parameter types')
       }
 
-      // Validate GitHub username format
-      if (!this.GITHUB_USERNAME_PATTERN.test(owner)) {
+      // Use RouteValidator.PROPERTY instead of this.PROPERTY
+      if (!RouteValidator.GITHUB_USERNAME_PATTERN.test(owner)) {
         throw new Error('Invalid GitHub username format')
       }
 
       // Validate repository name format
-      if (!this.GITHUB_REPO_PATTERN.test(repo)) {
+      if (!RouteValidator.GITHUB_REPO_PATTERN.test(repo)) {
         throw new Error('Invalid repository name format')
       }
 
@@ -55,9 +55,9 @@ export class RouteValidator {
     } catch (error: any) {
       console.error('Route validation failed:', error.message)
 
-      // Redirect to search with error message
+      // Redirect to Search (capital S to match your route name)
       next({
-        name: 'search',
+        name: 'Search',
         query: {
           error: 'invalid-repository',
           message: error.message,
@@ -67,11 +67,11 @@ export class RouteValidator {
     }
   }
 
-  static validateComparisonRoute(
+  static validateComparisonRoute = (
     to: RouteLocationNormalized,
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
-  ): void {
+  ): void => {
     const { repos } = to.query
 
     try {
@@ -96,7 +96,7 @@ export class RouteValidator {
       console.error('Comparison route validation failed:', error.message)
 
       next({
-        name: 'search',
+        name: 'Search',
         query: {
           error: 'invalid-comparison',
           message: error.message
