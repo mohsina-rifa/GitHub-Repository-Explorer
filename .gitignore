@@ -43,3 +43,6 @@ Thumbs.db
 # files
 *.txt
 *.pdf
+
+# directories
+BMAD_UIUX/
