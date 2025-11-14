@@ -20,6 +20,11 @@ const router = createRouter({
       },
     },
     {
+      path: '/search-result',
+      name: 'SearchResult',
+      component: () => import('../views/SearchResult.vue'),
+    },
+    {
       path: '/repository/:owner/:repo',
       name: 'RepositoryDetail',
       component: () => import('../views/RepositoryDetailView.vue'),
