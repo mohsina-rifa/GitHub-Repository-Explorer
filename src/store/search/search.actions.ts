@@ -66,9 +66,19 @@ const performSearch = async (
   }
 }
 
+const setSort = (state: SearchState, sort: string) => {
+  const [sortKey, sortOrder] = sort.split('-') as [SearchFilters['sort'], SearchFilters['order']]
+  state.filters.sort = sortKey
+  state.filters.order = sortOrder
+}
+
 export const actions = {
   async searchRepositories(this: SearchState, query: string, page: number = 1) {
     await performSearch(this, query, page)
+  },
+  
+  setSort(this: SearchState, sort: string) {
+    setSort(this, sort)
   },
 
   async setFilters(this: SearchState, filters: SearchFilters) {
