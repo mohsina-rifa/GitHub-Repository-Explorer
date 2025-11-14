@@ -14,21 +14,6 @@
       >
         <span class="navbar-toggler-icon"></span>
       </button>
-      <!-- <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <router-link class="nav-link active" to="/">Home</router-link>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#">Favorites</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#">
-              <i class="bi bi-moon-stars"></i>
-            </a>
-          </li>
-        </ul>
-      </div> -->
     </div>
   </nav>
 </template>
@@ -37,6 +22,7 @@
 /* Navigation */
 .navbar {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background-color: #281e5d !important;
 }
 
 .navbar-brand {

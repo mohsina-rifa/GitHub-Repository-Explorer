@@ -6,11 +6,11 @@
       <div class="row">
         <div class="col-md-6">
           <h5><i class="bi bi-github"></i> GitHub Explorer</h5>
-          <p class="text-muted">Explore and discover amazing open-source projects</p>
+          <p>Explore and discover amazing open-source projects</p>
         </div>
         <div class="col-md-6 text-md-end">
-          <p class="text-muted mb-0">Built with Vue.js & GitHub API</p>
-          <p class="text-muted">© 2025 GitHub Repository Explorer</p>
+          <p class="mb-0">Built with Vue.js & GitHub API</p>
+          <p>© 2025 GitHub Repository Explorer</p>
         </div>
       </div>
     </div>
@@ -21,6 +21,7 @@
 /* Footer */
 .footer {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #281e5d !important;
 }
 
 .footer h5 {
