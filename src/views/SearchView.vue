@@ -1,12 +1,16 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
 const searchQuery = ref('')
 
+const DEBOUNCE_DELAY = 300
+let navTimeout = null
+
 // Convert string to kebab-case
-const toKebabCase = str => {
+const toKebabCase = (str) => {
   return str
     .trim()
     .toLowerCase()
@@ -16,12 +20,34 @@ const toKebabCase = str => {
     .replace(/^-+|-+$/g, '')
 }
 
-// Handle search submission
-const handleSearch = () => {
-  if (searchQuery.value.trim()) {
-    const kebabQuery = toKebabCase(searchQuery.value)
-    router.push({ name: 'SearchResult', params: { query: kebabQuery } })
+const debouncedNavigate = (rawQuery) => {
+  const kebabQuery = toKebabCase(rawQuery)
+  if (!kebabQuery) return
+  if (route.params.query === kebabQuery) return
+
+  if (navTimeout) clearTimeout(navTimeout)
+
+  navTimeout = setTimeout(() => {
+    if (route.params.query !== kebabQuery) {
+      router.push({ name: 'SearchResult', params: { query: kebabQuery } })
+    }
+    navTimeout = null
+  }, DEBOUNCE_DELAY)
+}
+
+onUnmounted(() => {
+  if (navTimeout) {
+    clearTimeout(navTimeout)
+    navTimeout = null
   }
+})
+
+// Handle search submission (debounced navigation)
+const handleSearch = () => {
+  const q = searchQuery.value.trim()
+  if (!q) return
+
+  debouncedNavigate(q)
 }
 </script>
 
