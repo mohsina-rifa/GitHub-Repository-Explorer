@@ -329,17 +329,11 @@ export const actions = {
    */
   setFilters(this: any, filters: Partial<FilterOptions>) {
     this.filters = this.filters || { languages: [], licenses: [] }
-
-    // Shallow merge incoming filters onto existing ones
     const merged = { ...this.filters, ...filters } as any
-
-    // Ensure arrays exist to avoid runtime errors
     merged.languages = merged.languages || []
     merged.licenses = merged.licenses || []
-
     this.filters = merged
     this.currentPage = 1
-
     if (this.query && this.query.trim() !== '') {
       this.performSearch(this.query)
     }
@@ -349,17 +343,15 @@ export const actions = {
    * Reset all filters to initial state
    */
   resetFilters(this: any) {
-    // reset to minimal initial filter shape
     this.filters = { languages: [], licenses: [] } as Partial<FilterOptions>
     this.currentPage = 1
-
     if (this.query && this.query.trim() !== '') {
       this.performSearch(this.query)
     }
   },
 
   /**
-   * Reset entire search state
+   * Reset entire search state, including the cache.
    */
   resetSearch(this: any) {
     this.query = ''
@@ -373,6 +365,10 @@ export const actions = {
     this.availableLanguages = []
     this.availableLicenses = []
     this.resetFilters()
+    
+    if (this.searchCache) {
+      this.searchCache.clear()
+    }
   },
 
   /**
@@ -406,7 +402,7 @@ export const actions = {
   },
 
   /**
-   * Perform search using GitHub API
+   * Perform search using GitHub API, with in-memory caching.
    * @param query - Search query string
    */
   async performSearch(this: any, query: string) {
@@ -414,18 +410,10 @@ export const actions = {
     this.setQuery(query)
 
     try {
-      // build query using filters
       const filters: Partial<FilterOptions> = this.filters || {}
       let baseQuery = query.trim()
-
-      // append has:issues / topics if present (best-effort)
-      if (filters.hasIssues) {
-        baseQuery += ' has:issues'
-      }
-      if (filters.hasTopics) {
-        // topic:* is not officially documented but keep as a best-effort placeholder
-        baseQuery += ' topic:*'
-      }
+      if (filters.hasIssues) baseQuery += ' has:issues'
+      if (filters.hasTopics) baseQuery += ' topic:*'
 
       const builtQuery = githubApi.buildSearchQuery({
         query: baseQuery,
@@ -436,10 +424,26 @@ export const actions = {
         license: filters.licenses
       })
 
-      // map sortBy to GitHub API sort param (best-match => undefined)
       const sort =
         this.sortBy === 'best-match' ? undefined : (this.sortBy as 'stars' | 'forks' | 'updated')
       const order = this.sortDirection || 'desc'
+
+      const cacheKey = JSON.stringify({
+        query: builtQuery,
+        sort,
+        order,
+        perPage: this.perPage,
+        page: this.currentPage
+      })
+
+      this.searchCache = this.searchCache || new Map()
+      if (this.searchCache.has(cacheKey)) {
+        const cachedResp = this.searchCache.get(cacheKey)!
+        this.setRepositories(cachedResp.items || [])
+        this.setTotalCount(cachedResp.total_count || 0)
+        this.setError(null)
+        return 
+      }
 
       const resp = await githubApi.searchRepositories({
         query: builtQuery,
@@ -448,6 +452,9 @@ export const actions = {
         perPage: this.perPage,
         page: this.currentPage
       })
+
+      // Store the fresh result in the cache
+      this.searchCache.set(cacheKey, resp)
 
       this.setRepositories(resp.items || [])
       this.setTotalCount(resp.total_count || 0)
