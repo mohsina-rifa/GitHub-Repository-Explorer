@@ -1,8 +1,6 @@
 import type { Repository } from '../types/auth'
 import { githubHttp } from './github.http'
-import config from '../utils/config'
-import { Sanitizer } from '../utils/sanitizer'
-import { Validator } from '../utils/validator'
+import { config, Sanitizer, Validator } from '../utils/index'
 
 interface GitHubSearchResponse {
   total_count: number

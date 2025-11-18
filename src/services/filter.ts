@@ -1,6 +1,5 @@
 import type { Repository } from '../types/auth'
-import { Sanitizer } from '../utils/sanitizer'
-import { Validator } from '../utils/validator'
+import { Sanitizer, Validator } from '../utils/index'
 
 export interface FilterOptions {
   languages?: string[]

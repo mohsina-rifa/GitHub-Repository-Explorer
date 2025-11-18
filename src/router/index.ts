@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { RouteValidator } from './guard'
-import { Validator } from '../utils/validator'
+import { Validator } from '../utils/index'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

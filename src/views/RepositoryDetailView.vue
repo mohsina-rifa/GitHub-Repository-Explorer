@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { githubApi } from '../api/github.api'
-import { Sanitizer } from '../utils/sanitizer'
+import { Sanitizer } from '../utils/index'
 
 interface Props {
   owner: string

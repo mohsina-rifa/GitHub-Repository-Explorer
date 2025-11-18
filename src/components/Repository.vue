@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useComparisonStore } from '../store/comparison/comparison.store'
 import type { Repository } from '../types/auth'
-import { Sanitizer } from '../utils/sanitizer'
+import { Sanitizer } from '../utils/index'
 
 interface Props {
   repository: Repository

@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Sanitizer } from '../utils/sanitizer'
-import { Validator } from '../utils/validator'
+import { Sanitizer , Validator } from '../utils/index'
 
 const route = useRoute()
 const router = useRouter()
