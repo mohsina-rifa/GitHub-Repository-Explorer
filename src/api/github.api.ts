@@ -1,5 +1,6 @@
 import type { Repository } from '../types/auth'
 import { githubHttp } from './github.http'
+import config from '../utils/config'
 
 interface GitHubSearchResponse {
   total_count: number
@@ -23,7 +24,7 @@ class GitHubApiService {
   constructor() {
     // base URL is configured in the axios instance (src/api/github.http.ts)
 
-    if (!import.meta.env.VITE_GITHUB_TOKEN) {
+    if (!config.githubToken) {
       console.warn('GitHub token not found. API requests may be rate limited.')
     }
   }

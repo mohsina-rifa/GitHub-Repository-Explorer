@@ -7,8 +7,14 @@ import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'
 
+import config from './utils/config'
+
 const app = createApp(App)
 const pinia = createPinia()
+
+document.title = config.appName
+app.provide('config', config)
+app.config.globalProperties.$config = config
 
 app.use(pinia)
 app.use(router)
