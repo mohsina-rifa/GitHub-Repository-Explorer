@@ -24,6 +24,7 @@ interface GitHubError {
 class GitHubApiService {
   constructor() {
     // base URL is configured in the axios instance (src/api/github.http.ts)
+
     if (!config.githubToken) {
       console.warn('GitHub token not found. API requests may be rate limited.')
     }
