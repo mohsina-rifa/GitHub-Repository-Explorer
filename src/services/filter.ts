@@ -1,4 +1,5 @@
 import type { Repository } from '../types/auth'
+import { Sanitizer, Validator } from '../utils/index'
 
 export interface FilterOptions {
   languages?: string[]
@@ -19,48 +20,100 @@ export interface SortOption {
 }
 
 export class FilterService {
+  private static sanitizeArray(arr?: string[]): string[] {
+    if (!arr || !Array.isArray(arr)) return []
+    return arr
+      .map(v => (v == null ? '' : String(v)))
+      .map(v => Sanitizer.sanitizeRepositoryName(v).trim())
+      .filter(v => v.length > 0 && Validator.isValidRepositoryName(v))
+  }
+
   /**
    * Filter repositories based on filter options
    */
   static filterRepositories(repositories: Repository[], filters: FilterOptions): Repository[] {
+    const allowedLanguages = this.sanitizeArray(filters.languages)
+    const allowedLicenses = this.sanitizeArray(filters.licenses)
+
+    // Normalize and validate date filters
+    const dateFrom =
+      filters.dateFrom instanceof Date && !isNaN(filters.dateFrom.getTime())
+        ? filters.dateFrom
+        : filters.dateFrom
+          ? new Date(String(filters.dateFrom))
+          : undefined
+    const dateTo =
+      filters.dateTo instanceof Date && !isNaN(filters.dateTo.getTime())
+        ? filters.dateTo
+        : filters.dateTo
+          ? new Date(String(filters.dateTo))
+          : undefined
+
+    // Normalize star/fork numeric bounds
+    const minStars = Number.isFinite(Number(filters.minStars))
+      ? Math.max(0, Math.floor(Number(filters.minStars)))
+      : undefined
+    const maxStars = Number.isFinite(Number(filters.maxStars))
+      ? Math.max(0, Math.floor(Number(filters.maxStars)))
+      : undefined
+    const minForks = Number.isFinite(Number(filters.minForks))
+      ? Math.max(0, Math.floor(Number(filters.minForks)))
+      : undefined
+    const maxForks = Number.isFinite(Number(filters.maxForks))
+      ? Math.max(0, Math.floor(Number(filters.maxForks)))
+      : undefined
+
+    // Ensure min <= max when both provided
+    const finalMinStars =
+      minStars !== undefined && maxStars !== undefined && minStars > maxStars ? maxStars : minStars
+    const finalMinForks =
+      minForks !== undefined && maxForks !== undefined && minForks > maxForks ? maxForks : minForks
+
     return repositories.filter(repo => {
       // Language filter
-      if (filters.languages && filters.languages.length > 0) {
-        if (!repo.language || !filters.languages.includes(repo.language)) {
+      if (allowedLanguages.length > 0) {
+        const repoLang = repo.language
+          ? Sanitizer.sanitizeRepositoryName(String(repo.language))
+          : ''
+        if (!repoLang || !allowedLanguages.includes(repoLang)) {
           return false
         }
       }
 
       // Star count filter
-      if (filters.minStars !== undefined && repo.stargazers_count < filters.minStars) {
+      if (finalMinStars !== undefined && repo.stargazers_count < finalMinStars) {
         return false
       }
-      if (filters.maxStars !== undefined && repo.stargazers_count > filters.maxStars) {
+      if (maxStars !== undefined && repo.stargazers_count > maxStars) {
         return false
       }
 
       // Fork count filter
-      if (filters.minForks !== undefined && repo.forks_count < filters.minForks) {
+      if (finalMinForks !== undefined && repo.forks_count < finalMinForks) {
         return false
       }
-      if (filters.maxForks !== undefined && repo.forks_count > filters.maxForks) {
+      if (maxForks !== undefined && repo.forks_count > maxForks) {
         return false
       }
 
       // Date filter
-      if (filters.dateFrom || filters.dateTo) {
+      if (dateFrom || dateTo) {
         const updatedDate = new Date(repo.updated_at)
-        if (filters.dateFrom && updatedDate < filters.dateFrom) {
+        if (dateFrom && updatedDate < dateFrom) {
           return false
         }
-        if (filters.dateTo && updatedDate > filters.dateTo) {
+        if (dateTo && updatedDate > dateTo) {
           return false
         }
       }
 
       // License filter
-      if (filters.licenses && filters.licenses.length > 0) {
-        if (!repo.license || !filters.licenses.includes(repo.license.name)) {
+      if (allowedLicenses.length > 0) {
+        const licName =
+          repo.license && repo.license.name
+            ? Sanitizer.sanitizeRepositoryName(String(repo.license.name))
+            : ''
+        if (!licName || !allowedLicenses.includes(licName)) {
           return false
         }
       }
@@ -74,7 +127,8 @@ export class FilterService {
 
       // Has topics filter
       if (filters.hasTopics !== undefined) {
-        if (filters.hasTopics && (!repo.topics || repo.topics.length === 0)) {
+        const hasTopics = Array.isArray(repo.topics) && repo.topics.length > 0
+        if (filters.hasTopics && !hasTopics) {
           return false
         }
       }
@@ -103,7 +157,12 @@ export class FilterService {
           comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
           break
         case 'name':
-          comparison = a.name.localeCompare(b.name)
+          // sanitize names for deterministic sorting; validate via Validator
+          const nameA = Sanitizer.sanitizeRepositoryName(a.name || '')
+          const nameB = Sanitizer.sanitizeRepositoryName(b.name || '')
+          const validA = Validator.isValidRepositoryName(nameA) ? nameA : ''
+          const validB = Validator.isValidRepositoryName(nameB) ? nameB : ''
+          comparison = validA.localeCompare(validB)
           break
       }
 
@@ -120,7 +179,8 @@ export class FilterService {
     const languages = new Set<string>()
     repositories.forEach(repo => {
       if (repo.language) {
-        languages.add(repo.language)
+        const lang = Sanitizer.sanitizeRepositoryName(String(repo.language))
+        if (lang && Validator.isValidRepositoryName(lang)) languages.add(lang)
       }
     })
     return Array.from(languages).sort()
@@ -132,8 +192,9 @@ export class FilterService {
   static getUniqueLicenses(repositories: Repository[]): string[] {
     const licenses = new Set<string>()
     repositories.forEach(repo => {
-      if (repo.license) {
-        licenses.add(repo.license.name)
+      if (repo.license && repo.license.name) {
+        const name = Sanitizer.sanitizeRepositoryName(String(repo.license.name))
+        if (name && Validator.isValidRepositoryName(name)) licenses.add(name)
       }
     })
     return Array.from(licenses).sort()
