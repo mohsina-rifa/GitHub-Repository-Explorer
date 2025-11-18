@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { githubApi } from '../api/github.api'
+import { Sanitizer } from '../utils/sanitizer'
 
 interface Props {
   owner: string
@@ -20,7 +21,26 @@ const issues = ref<any[]>([])
 const isLoading = ref(true)
 const error = ref<string | null>(null)
 
-// Computed
+// Computed - sanitized display values
+const sanitizedOwnerLogin = computed(() =>
+  repository.value?.owner?.login ? Sanitizer.sanitizeForDisplay(repository.value.owner.login) : ''
+)
+const sanitizedRepoName = computed(() =>
+  repository.value?.name ? Sanitizer.sanitizeForDisplay(repository.value.name) : ''
+)
+const sanitizedDescription = computed(() =>
+  repository.value?.description
+    ? Sanitizer.sanitizeForDisplay(repository.value.description)
+    : 'No description available'
+)
+const sanitizedLicenseName = computed(() =>
+  repository.value?.license?.name ? Sanitizer.sanitizeForDisplay(repository.value.license.name) : ''
+)
+const sanitizedTopics = computed(() =>
+  (repository.value?.topics || []).map((t: any) => Sanitizer.escapeHtml(String(t)))
+)
+
+// Language stats
 const languageStats = computed(() => {
   if (!languages.value) return []
 
@@ -67,7 +87,7 @@ const formatTimeAgo = (dateString: string) => {
   const now = new Date()
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-  const intervals = {
+  const intervals: Record<string, number> = {
     year: 31536000,
     month: 2592000,
     week: 604800,
@@ -86,7 +106,13 @@ const formatTimeAgo = (dateString: string) => {
   return 'just now'
 }
 
-// Simple markdown to HTML converter (basic implementation)
+// Utility: safe URL for href/src usage
+const safeUrl = (url?: string | null) => {
+  if (!url) return ''
+  return Sanitizer.sanitizeUrl(url)
+}
+
+// Simple markdown to HTML converter with sanitization
 const parseMarkdown = (markdown: string): string => {
   if (!markdown) return ''
 
@@ -96,53 +122,55 @@ const parseMarkdown = (markdown: string): string => {
     .replace(/^## (.*$)/gim, '<h2 id="$1">$1</h2>')
     .replace(/^# (.*$)/gim, '<h2>$1</h2>')
     // Bold
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*(.*?)\*\*/g, (_m, p1) => `<strong>${Sanitizer.escapeHtml(p1)}</strong>`)
     // Italic
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Links
-    .replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
-    )
+    .replace(/\*(.*?)\*/g, (_m, p1) => `<em>${Sanitizer.escapeHtml(p1)}</em>`)
+    // Links - sanitize href and escape text
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => {
+      const href = Sanitizer.sanitizeUrl(url)
+      const escText = Sanitizer.escapeHtml(text)
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escText}</a>`
+    })
     // Code blocks
     .replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, _lang, code) => {
-      return `<div class="code-block"><pre><code>${escapeHtml(code.trim())}</code></pre><button class="copy-btn" onclick="navigator.clipboard.writeText('${escapeHtml(code.trim()).replace(/'/g, "\\'")}')"><i class="bi bi-clipboard"></i></button></div>`
+      const codeEsc = Sanitizer.escapeHtml(code.trim())
+      const copyText = codeEsc.replace(/'/g, "\\'")
+      return `<div class="code-block"><pre><code>${codeEsc}</code></pre><button class="copy-btn" onclick="navigator.clipboard.writeText('${copyText}')"><i class="bi bi-clipboard"></i></button></div>`
     })
     // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Line breaks
+    .replace(/`([^`]+)`/g, (_m, p1) => `<code>${Sanitizer.escapeHtml(p1)}</code>`)
+    // Line breaks -> paragraphs
     .replace(/\n\n/g, '</p><p>')
     // Lists
-    .replace(/^\* (.*$)/gim, '<li>$1</li>')
+    .replace(/^\* (.*$)/gim, (_m, p1) => `<li>${Sanitizer.escapeHtml(p1)}</li>`)
     .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
 
-  return `<div>${html}</div>`
+  // Final sanitization step to strip dangerous elements/attributes
+  return Sanitizer.sanitizeMarkdown(`<div>${html}</div>`)
 }
 
-// Escape HTML
-const escapeHtml = (text: string): string => {
-  const map: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  }
-  return text.replace(/[&<>"']/g, m => map[m] ?? m)
-}
+// Computed sanitized HTML for README
+const readmeHtml = computed(() => parseMarkdown(readme.value))
 
-// Extract table of contents from README
+// Extract table of contents from README (headings)
 const tableOfContents = computed(() => {
   if (!readme.value) return []
 
-  const headings = readme.value.match(/^##\s+(.+)$/gm) || []
-  return headings.map(heading => {
-    const title = heading.replace(/^##\s+/, '')
-    return {
+  const regex = /^##\s+(.+)$/gm
+  const toc: { title: string; id: string }[] = []
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(readme.value)) !== null) {
+    const titleRaw = match[1] ? match[1].trim() : ''
+    const title = Sanitizer.escapeHtml(titleRaw)
+    toc.push({
       title,
-      id: title.toLowerCase().replace(/\s+/g, '-')
-    }
-  })
+      id: titleRaw
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]/g, '')
+    })
+  }
+  return toc
 })
 
 // Load repository data
@@ -158,6 +186,8 @@ const loadRepositoryDetails = async () => {
     // Fetch README
     try {
       const readmeData = await githubApi.getRepositoryReadme(props.owner, props.repo)
+      // README content likely base64 encoded by GitHub API in some implementations;
+      // keep as-is here and let parseMarkdown handle it (ensure it's plain text)
       readme.value = readmeData.content
     } catch (e) {
       console.warn('README not found')
@@ -204,8 +234,6 @@ const goBack = () => {
   router.back()
 }
 
-// Copy to clipboard
-
 onMounted(() => {
   loadRepositoryDetails()
 })
@@ -224,7 +252,9 @@ onMounted(() => {
             <li class="breadcrumb-item">
               <a href="#" @click.prevent="goBack">Search Results</a>
             </li>
-            <li class="breadcrumb-item active" aria-current="page">{{ owner }}/{{ repo }}</li>
+            <li class="breadcrumb-item active" aria-current="page">
+              {{ props.owner }}/{{ props.repo }}
+            </li>
           </ol>
         </nav>
       </div>
@@ -258,20 +288,20 @@ onMounted(() => {
             <div class="repo-title-section">
               <div class="d-flex align-items-center gap-3 mb-2">
                 <img
-                  :src="repository.owner.avatar_url"
-                  :alt="repository.owner.login"
+                  :src="safeUrl(repository.owner?.avatar_url)"
+                  :alt="sanitizedOwnerLogin"
                   class="owner-avatar"
                 />
                 <div>
                   <h1 class="repo-name mb-1">
                     <a
-                      :href="`https://github.com/${repository.owner.login}`"
+                      :href="safeUrl(`https://github.com/${repository.owner.login}`)"
                       target="_blank"
                       class="text-muted owner-link"
                     >
-                      {{ repository.owner.login }}
+                      {{ sanitizedOwnerLogin }}
                     </a>
-                    / <strong>{{ repository.name }}</strong>
+                    / <strong>{{ sanitizedRepoName }}</strong>
                   </h1>
                   <p class="repo-visibility mb-0">
                     <span class="badge bg-success">
@@ -281,7 +311,7 @@ onMounted(() => {
                 </div>
               </div>
               <p class="repo-description">
-                {{ repository.description || 'No description available' }}
+                {{ sanitizedDescription }}
               </p>
             </div>
 
@@ -334,7 +364,7 @@ onMounted(() => {
             <div v-if="repository.license" class="stat-item">
               <i class="bi bi-file-text"></i>
               <div>
-                <strong>{{ repository.license.name }}</strong>
+                <strong>{{ sanitizedLicenseName }}</strong>
                 <small class="text-muted d-block">License</small>
               </div>
             </div>
@@ -342,7 +372,7 @@ onMounted(() => {
               <i class="bi bi-link-45deg"></i>
               <div>
                 <a
-                  :href="repository.html_url"
+                  :href="safeUrl(repository.html_url)"
                   target="_blank"
                   class="btn btn-sm btn-outline-primary"
                 >
@@ -353,8 +383,8 @@ onMounted(() => {
           </div>
 
           <!-- Topics -->
-          <div v-if="repository.topics && repository.topics.length > 0" class="repo-topics mt-3">
-            <span v-for="topic in repository.topics" :key="topic" class="topic-badge">
+          <div v-if="sanitizedTopics.length > 0" class="repo-topics mt-3">
+            <span v-for="topic in sanitizedTopics" :key="topic" class="topic-badge">
               {{ topic }}
             </span>
           </div>
@@ -380,7 +410,7 @@ onMounted(() => {
                 </div>
 
                 <!-- README Content -->
-                <div v-html="parseMarkdown(readme)"></div>
+                <div v-html="readmeHtml"></div>
               </div>
             </div>
 
@@ -389,7 +419,7 @@ onMounted(() => {
               <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-exclamation-circle"></i> Recent Issues</h5>
                 <a
-                  :href="`https://github.com/${owner}/${repo}/issues`"
+                  :href="safeUrl(`https://github.com/${props.owner}/${props.repo}/issues`)"
                   target="_blank"
                   class="btn btn-sm btn-outline-primary"
                 >
@@ -413,7 +443,7 @@ onMounted(() => {
                             {{ issue.state }}
                           </span>
                           <h6 class="issue-title mb-0">
-                            <a :href="issue.html_url" target="_blank">{{ issue.title }}</a>
+                            <a :href="safeUrl(issue.html_url)" target="_blank">{{ issue.title }}</a>
                           </h6>
                         </div>
                         <p class="issue-meta mb-0">
@@ -464,7 +494,7 @@ onMounted(() => {
                     class="contributor-item"
                   >
                     <img
-                      :src="contributor.avatar_url"
+                      :src="safeUrl(contributor.avatar_url)"
                       :alt="contributor.login"
                       class="contributor-avatar"
                     />
@@ -477,7 +507,9 @@ onMounted(() => {
                   </div>
                 </div>
                 <a
-                  :href="`https://github.com/${owner}/${repo}/graphs/contributors`"
+                  :href="
+                    safeUrl(`https://github.com/${props.owner}/${props.repo}/graphs/contributors`)
+                  "
                   target="_blank"
                   class="btn btn-sm btn-outline-primary w-100 mt-3"
                 >
@@ -532,7 +564,9 @@ onMounted(() => {
               <div class="card-body">
                 <div v-if="repository.homepage" class="info-item">
                   <i class="bi bi-link-45deg"></i>
-                  <a :href="repository.homepage" target="_blank">{{ repository.homepage }}</a>
+                  <a :href="safeUrl(repository.homepage)" target="_blank">{{
+                    repository.homepage
+                  }}</a>
                 </div>
                 <div class="info-item">
                   <i class="bi bi-people"></i>
