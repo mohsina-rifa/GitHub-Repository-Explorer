@@ -2,6 +2,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Sanitizer } from '../utils/sanitizer'
+import { Validator } from '../utils/validator'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,8 +24,13 @@ const toKebabCase = (str) => {
 
 const debouncedNavigate = (rawQuery) => {
   const clean = Sanitizer.sanitizeSearchQuery(rawQuery)
+
+  if (!Validator.isValidSearchQuery(clean)) {
+    console.warn('Search query is invalid or empty after sanitization')
+    return
+  }
+
   const kebabQuery = toKebabCase(clean)
-  
   if (!kebabQuery) return
   if (route.params.query === kebabQuery) return
 
@@ -48,7 +54,10 @@ onUnmounted(() => {
 // Handle search submission (debounced navigation)
 const handleSearch = () => {
   const q = Sanitizer.sanitizeSearchQuery(searchQuery.value)
-  if (!q) return
+  if (!Validator.isValidSearchQuery(q)) {
+    // invalid or empty, do nothing
+    return
+  }
 
   debouncedNavigate(q)
 }

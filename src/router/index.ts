@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteLocationNormalized } from 'vue-router'
 import { RouteValidator } from './guard'
+import { Validator } from '../utils/validator'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,7 +9,7 @@ const router = createRouter({
     {
       path: '/',
       name: 'Home',
-      redirect: '/search',
+      redirect: '/search'
     },
     {
       path: '/search',
@@ -17,24 +18,25 @@ const router = createRouter({
       meta: {
         title: 'GitHub Repository Search',
         description: 'Search and explore GitHub repositories'
-      },
+      }
     },
     {
       path: '/search-result/:query',
       name: 'SearchResult',
-      component: () => import('../views/SearchResult.vue'),
+      component: () => import('../views/SearchResult.vue')
     },
     {
       path: '/repository/:owner/:repo',
       name: 'RepositoryDetail',
       component: () => import('../views/RepositoryDetailView.vue'),
       beforeEnter: RouteValidator.validateRepositoryRoute,
-      props: (route) => ({
+      props: route => ({
         owner: route.params.owner as string,
         repo: route.params.repo as string
       }),
       meta: {
-        title: (route: RouteLocationNormalized) => `${route.params.owner}/${route.params.repo} - Repository Details`,
+        title: (route: RouteLocationNormalized) =>
+          `${route.params.owner}/${route.params.repo} - Repository Details`,
         description: 'Detailed repository information, README, and contributors'
       }
     },
@@ -52,7 +54,7 @@ const router = createRouter({
       path: '/error',
       name: 'error',
       component: () => import('../views/ErrorView.vue'),
-      props: (route) => ({
+      props: route => ({
         error: route.query.error,
         message: route.query.message,
         statusCode: route.query.statusCode
@@ -65,7 +67,7 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'NotFound',
-      redirect: (to) => ({
+      redirect: to => ({
         name: 'error',
         query: {
           error: 'not-found',
@@ -73,8 +75,35 @@ const router = createRouter({
           statusCode: '404'
         }
       })
-    },
+    }
   ]
+})
+
+router.beforeEach((to: RouteLocationNormalized, _from: RouteLocationNormalized, next) => {
+  if (to.name === 'SearchResult') {
+    const q = String(to.params.query || '')
+    if (!Validator.isValidSearchQuery(q)) {
+      // redirect to search page if query is invalid/empty
+      return next({ name: 'Search' })
+    }
+  }
+
+  if (to.name === 'RepositoryDetail') {
+    const owner = String(to.params.owner || '')
+    const repo = String(to.params.repo || '')
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
+      return next({
+        name: 'error',
+        query: {
+          error: 'invalid-repo',
+          message: 'Invalid repository identifier',
+          statusCode: '400'
+        }
+      })
+    }
+  }
+
+  return next()
 })
 
 export default router

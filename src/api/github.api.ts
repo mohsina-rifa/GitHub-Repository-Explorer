@@ -2,6 +2,7 @@ import type { Repository } from '../types/auth'
 import { githubHttp } from './github.http'
 import config from '../utils/config'
 import { Sanitizer } from '../utils/sanitizer'
+import { Validator } from '../utils/validator'
 
 interface GitHubSearchResponse {
   total_count: number
@@ -24,7 +25,6 @@ interface GitHubError {
 class GitHubApiService {
   constructor() {
     // base URL is configured in the axios instance (src/api/github.http.ts)
-
     if (!config.githubToken) {
       console.warn('GitHub token not found. API requests may be rate limited.')
     }
@@ -69,7 +69,7 @@ class GitHubApiService {
         }
 
         if (status === 422) {
-          throw new Error('Validation failed. Please check your search query.')
+          throw new Error('Validation failed. Please check your request parameters.')
         }
 
         const message = (data && data.message) || `GitHub API Error: ${status}`
@@ -101,8 +101,9 @@ class GitHubApiService {
   }): Promise<GitHubSearchResponse> {
     const rawQuery = params.query || ''
     const query = Sanitizer.sanitizeSearchQuery(rawQuery)
-    if (!query) {
-      throw new Error('Search query cannot be empty')
+
+    if (!Validator.isValidSearchQuery(query)) {
+      throw new Error('Search query is invalid or empty')
     }
 
     const perPage = Number.isFinite(Number(params.perPage)) ? Math.max(1, Math.min(100, Number(params.perPage))) : 30
@@ -139,11 +140,16 @@ class GitHubApiService {
   }): string {
     let searchQuery = Sanitizer.sanitizeSearchQuery(params.query || '')
 
+    // ensure base query is valid (allow empty advanced queries to still work)
+    if (searchQuery && !Validator.isValidSearchQuery(searchQuery)) {
+      searchQuery = ''
+    }
+
     // Add language filters
     if (params.language && params.language.length > 0) {
       params.language.forEach(lang => {
         const safeLang = Sanitizer.sanitizeRepositoryName(lang)
-        if (safeLang) searchQuery += ` language:${safeLang}`
+        if (safeLang) searchQuery += (searchQuery ? ' ' : '') + `language:${safeLang}`
       })
     }
 
@@ -152,11 +158,11 @@ class GitHubApiService {
       const min = typeof params.stars.min === 'number' ? params.stars.min : undefined
       const max = typeof params.stars.max === 'number' ? params.stars.max : undefined
       if (min !== undefined && max !== undefined) {
-        searchQuery += ` stars:${min}..${max}`
+        searchQuery += (searchQuery ? ' ' : '') + `stars:${min}..${max}`
       } else if (min !== undefined) {
-        searchQuery += ` stars:>=${min}`
+        searchQuery += (searchQuery ? ' ' : '') + `stars:>=${min}`
       } else if (max !== undefined) {
-        searchQuery += ` stars:<=${max}`
+        searchQuery += (searchQuery ? ' ' : '') + `stars:<=${max}`
       }
     }
 
@@ -165,11 +171,11 @@ class GitHubApiService {
       const min = typeof params.forks.min === 'number' ? params.forks.min : undefined
       const max = typeof params.forks.max === 'number' ? params.forks.max : undefined
       if (min !== undefined && max !== undefined) {
-        searchQuery += ` forks:${min}..${max}`
+        searchQuery += (searchQuery ? ' ' : '') + `forks:${min}..${max}`
       } else if (min !== undefined) {
-        searchQuery += ` forks:>=${min}`
+        searchQuery += (searchQuery ? ' ' : '') + `forks:>=${min}`
       } else if (max !== undefined) {
-        searchQuery += ` forks:<=${max}`
+        searchQuery += (searchQuery ? ' ' : '') + `forks:<=${max}`
       }
     }
 
@@ -178,11 +184,11 @@ class GitHubApiService {
       const from = Sanitizer.escapeHtml(params.created.from || '')
       const to = Sanitizer.escapeHtml(params.created.to || '')
       if (from && to) {
-        searchQuery += ` created:${from}..${to}`
+        searchQuery += (searchQuery ? ' ' : '') + `created:${from}..${to}`
       } else if (from) {
-        searchQuery += ` created:>=${from}`
+        searchQuery += (searchQuery ? ' ' : '') + `created:>=${from}`
       } else if (to) {
-        searchQuery += ` created:<=${to}`
+        searchQuery += (searchQuery ? ' ' : '') + `created:<=${to}`
       }
     }
 
@@ -191,11 +197,11 @@ class GitHubApiService {
       const from = Sanitizer.escapeHtml(params.pushed.from || '')
       const to = Sanitizer.escapeHtml(params.pushed.to || '')
       if (from && to) {
-        searchQuery += ` pushed:${from}..${to}`
+        searchQuery += (searchQuery ? ' ' : '') + `pushed:${from}..${to}`
       } else if (from) {
-        searchQuery += ` pushed:>=${from}`
+        searchQuery += (searchQuery ? ' ' : '') + `pushed:>=${from}`
       } else if (to) {
-        searchQuery += ` pushed:<=${to}`
+        searchQuery += (searchQuery ? ' ' : '') + `pushed:<=${to}`
       }
     }
 
@@ -203,7 +209,7 @@ class GitHubApiService {
     if (params.license && params.license.length > 0) {
       params.license.forEach(lic => {
         const safeLic = Sanitizer.sanitizeRepositoryName(lic)
-        if (safeLic) searchQuery += ` license:${safeLic}`
+        if (safeLic) searchQuery += (searchQuery ? ' ' : '') + `license:${safeLic}`
       })
     }
 
@@ -211,36 +217,38 @@ class GitHubApiService {
     if (params.topic && params.topic.length > 0) {
       params.topic.forEach(topic => {
         const safeTopic = Sanitizer.sanitizeRepositoryName(topic)
-        if (safeTopic) searchQuery += ` topic:${safeTopic}`
+        if (safeTopic) searchQuery += (searchQuery ? ' ' : '') + `topic:${safeTopic}`
       })
     }
 
     // Add archived filter
     if (typeof params.archived === 'boolean') {
-      searchQuery += ` archived:${params.archived}`
+      searchQuery += (searchQuery ? ' ' : '') + `archived:${params.archived}`
     }
 
     // Add fork filter
     if (params.fork !== undefined) {
       if (params.fork === 'only') {
-        searchQuery += ` fork:only`
+        searchQuery += (searchQuery ? ' ' : '') + `fork:only`
       } else {
-        searchQuery += ` fork:${params.fork}`
+        searchQuery += (searchQuery ? ' ' : '') + `fork:${params.fork}`
       }
     }
 
-    return searchQuery
+    return searchQuery.trim()
   }
 
   /**
    * Get repository details
    */
   async getRepository(owner: string, repo: string): Promise<Repository> {
-    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
-    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
-    if (!safeOwner || !safeRepo) {
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
       throw new Error('Invalid repository owner or name')
     }
+
+    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
+    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
+
     const url = `/repos/${encodeURIComponent(safeOwner)}/${encodeURIComponent(safeRepo)}`
     return this.request<Repository>({ url })
   }
@@ -249,6 +257,9 @@ class GitHubApiService {
    * Get repository by numeric ID
    */
   async getRepositoryById(id: number): Promise<Repository> {
+    if (!Number.isFinite(Number(id)) || id <= 0) {
+      throw new Error('Invalid repository id')
+    }
     return this.request<Repository>({ url: `/repositories/${id}` })
   }
 
@@ -256,11 +267,12 @@ class GitHubApiService {
    * Get repository README
    */
   async getRepositoryReadme(owner: string, repo: string): Promise<{ content: string }> {
-    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
-    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
-    if (!safeOwner || !safeRepo) {
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
       throw new Error('Invalid repository owner or name')
     }
+
+    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
+    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
 
     const data = await this.request<string>({
       url: `/repos/${encodeURIComponent(safeOwner)}/${encodeURIComponent(safeRepo)}/readme`,
@@ -275,11 +287,12 @@ class GitHubApiService {
    * Get repository contributors
    */
   async getRepositoryContributors(owner: string, repo: string, perPage = 30): Promise<any[]> {
-    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
-    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
-    if (!safeOwner || !safeRepo) {
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
       throw new Error('Invalid repository owner or name')
     }
+
+    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
+    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
 
     const p = {
       per_page: Math.max(1, Math.min(100, Number(perPage)))
@@ -295,11 +308,12 @@ class GitHubApiService {
    * Get repository languages
    */
   async getRepositoryLanguages(owner: string, repo: string): Promise<Record<string, number>> {
-    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
-    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
-    if (!safeOwner || !safeRepo) {
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
       throw new Error('Invalid repository owner or name')
     }
+
+    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
+    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
 
     return this.request<Record<string, number>>({
       url: `/repos/${encodeURIComponent(safeOwner)}/${encodeURIComponent(safeRepo)}/languages`
@@ -318,11 +332,12 @@ class GitHubApiService {
       page?: number
     }
   ): Promise<any[]> {
-    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
-    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
-    if (!safeOwner || !safeRepo) {
+    if (!Validator.isValidGitHubUsername(owner) || !Validator.isValidRepositoryName(repo)) {
       throw new Error('Invalid repository owner or name')
     }
+
+    const safeOwner = Sanitizer.sanitizeRepositoryName(owner)
+    const safeRepo = Sanitizer.sanitizeRepositoryName(repo)
 
     const p = {
       state: params?.state || 'open',
