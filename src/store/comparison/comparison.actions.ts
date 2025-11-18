@@ -20,8 +20,11 @@ export const actions = {
       return false
     }
 
-    // Add repository
+    // Add repository and update the cache
     this.selectedRepositories.push(repository)
+    if (this.repositoryCache && !this.repositoryCache.has(repository.id)) {
+      this.repositoryCache.set(repository.id, repository)
+    }
     this.error = null
     return true
   },
@@ -87,7 +90,7 @@ export const actions = {
   },
 
   /**
-   * Load repositories from IDs (for URL sharing)
+   * Load repositories from IDs (for URL sharing), using an in-memory cache.
    * @param ids - Array of repository IDs
    */
   async loadFromIds(this: any, ids: number[]) {
@@ -108,21 +111,48 @@ export const actions = {
     }
 
     try {
-      // Fetch all repositories by numeric id using the GitHub API endpoint /repositories/:id
-      const results = await Promise.allSettled(uniqueIds.map(id => githubApi.getRepositoryById(id)))
+      // --- Caching Logic Start ---
+      const cachedRepos: Repository[] = []
+      const idsToFetch: number[] = []
 
-      const repos: Repository[] = results
-        .filter((r): r is PromiseFulfilledResult<Repository> => r.status === 'fulfilled')
-        .map(r => r.value)
+      // Ensure cache exists on the store instance
+      this.repositoryCache = this.repositoryCache || new Map<number, Repository>()
 
-      if (repos.length === 0) {
+      for (const id of uniqueIds) {
+        if (this.repositoryCache.has(id)) {
+          cachedRepos.push(this.repositoryCache.get(id)!)
+        } else {
+          idsToFetch.push(id)
+        }
+      }
+      // --- Caching Logic End ---
+
+      let newlyFetchedRepos: Repository[] = []
+      if (idsToFetch.length > 0) {
+        // Fetch only the repositories that are not in the cache
+        const results = await Promise.allSettled(
+          idsToFetch.map(id => githubApi.getRepositoryById(id))
+        )
+
+        newlyFetchedRepos = results
+          .filter((r): r is PromiseFulfilledResult<Repository> => r.status === 'fulfilled')
+          .map(r => r.value)
+
+        // Populate the cache with the newly fetched repositories
+        for (const repo of newlyFetchedRepos) {
+          this.repositoryCache.set(repo.id, repo)
+        }
+      }
+
+      const allRepos = [...cachedRepos, ...newlyFetchedRepos]
+      if (allRepos.length === 0) {
         this.setError('Failed to load repositories from provided IDs')
         return
       }
 
-      // Replace current selection with loaded repositories (respect ordering of provided IDs)
+      // Combine and order the final list based on the original `uniqueIds` array
       const repoMap = new Map<number, Repository>()
-      repos.forEach(r => repoMap.set(r.id, r))
+      allRepos.forEach(r => repoMap.set(r.id, r))
       this.selectedRepositories = uniqueIds
         .map(id => repoMap.get(id))
         .filter((r): r is Repository => !!r)

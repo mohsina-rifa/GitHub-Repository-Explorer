@@ -1,6 +1,22 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import Navbar from "./components/common/Navbar.vue"
 import Footer from './components/common/Footer.vue'
+import { useObserver } from './composables/useObserver'
+
+type RateLimitPayload = { remaining: number; resetAt?: number }
+
+const remaining = ref<number | null>(null)
+const resetAt = ref<number | null>(null)
+
+useObserver<RateLimitPayload>('rateLimit:update', (data) => {
+  try {
+    remaining.value = data.remaining
+    resetAt.value = data.resetAt ?? null
+  } catch (e) {
+    console.error('Error handling rateLimit:update event', e)
+  }
+})
 </script>
 
 <template>
