@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useComparisonStore } from '../store/comparison/comparison.store'
 import type { Repository } from '../types/auth'
+import { Sanitizer } from '../utils/sanitizer'
 
 interface Props {
   repository: Repository
@@ -21,6 +22,20 @@ const isSelected = computed(() => comparisonStore.isSelected(props.repository.id
 
 // Check if at limit
 const isAtLimit = computed(() => comparisonStore.isAtLimit)
+
+const titleText = computed(() => Sanitizer.sanitizeForDisplay(props.repository.full_name || ''))
+
+const sanitizedDescription = computed(() =>
+  props.repository.description
+    ? Sanitizer.sanitizeForDisplay(props.repository.description)
+    : 'No description available'
+)
+const sanitizedTopics = computed(() =>
+  (props.repository.topics || []).map((t: any) => Sanitizer.escapeHtml(String(t)))
+)
+const sanitizedLicenseName = computed(() =>
+  props.repository.license?.name ? Sanitizer.sanitizeForDisplay(props.repository.license.name) : ''
+)
 
 // Navigate to repository detail page
 const goToDetail = () => {
@@ -113,10 +128,10 @@ const formatNumber = (num: number) => {
       <div class="d-flex justify-content-between align-items-start">
         <div class="flex-grow-1">
           <h5 class="repo-title">
-            <span class="repo-title-text">{{ repository.full_name }}</span>
+            <span class="repo-title-text">{{ titleText }}</span>
           </h5>
           <p class="repo-description">
-            {{ repository.description || 'No description available' }}
+            {{ sanitizedDescription }}
           </p>
         </div>
         <button
@@ -145,11 +160,11 @@ const formatNumber = (num: number) => {
           <i class="bi bi-calendar"></i> {{ formatTimeAgo(repository.updated_at) }}
         </span>
         <span v-if="repository.license" class="meta-item">
-          <i class="bi bi-file-text"></i> {{ repository.license.name }}
+          <i class="bi bi-file-text"></i> {{ sanitizedLicenseName }}
         </span>
       </div>
-      <div v-if="repository.topics && repository.topics.length > 0" class="repo-topics mt-2">
-        <span v-for="topic in repository.topics" :key="topic" class="topic-badge">
+      <div v-if="sanitizedTopics.length > 0" class="repo-topics mt-2">
+        <span v-for="topic in sanitizedTopics" :key="topic" class="topic-badge">
           {{ topic }}
         </span>
       </div>
